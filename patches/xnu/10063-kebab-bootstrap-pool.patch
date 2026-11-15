@@ -1,0 +1,11 @@
+--- a/osfmk/arm/pmap/pmap.h
++++ b/osfmk/arm/pmap/pmap.h
+@@ -119,7 +119,7 @@
+ /* Native 4 KiB: two roots plus up to seven L2 pages per 6 GiB mapping.
+  * The physical and virtual bases may each straddle an extra 1 GiB region.
+  */
+-#define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 16)
++#define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 128)   /* arm_vm_init allocates far more than 16 for the dynamic range */
+ #else /* defined(ARM_LARGE_MEMORY) */
+ #define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 8)
+ #endif /* defined(ARM_LARGE_MEMORY) */

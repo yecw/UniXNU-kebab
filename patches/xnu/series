@@ -32,3 +32,8 @@ arch:../../../patches/xnu/sheng-platform-power.patch
 # Keep the early console alive after TTBR0 is dropped: a frame buffer alias in the
 # final tables (GFander/KebabEarlyConsole, 4 KiB form).
 10063-kebab-early-alias.patch
+# Temporary: pmap_bootstrap and the arm_vm_init return on the early console.
+10063-kebab-post-vm-marks.patch
+# The 4 KiB capacity patch leaves 16 bootstrap table pages; arm_vm_init allocates
+# more than that for the dynamic range and start.s hangs when the pool is out.
+10063-kebab-bootstrap-pool.patch

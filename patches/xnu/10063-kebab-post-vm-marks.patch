@@ -1,0 +1,26 @@
+diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
+index 4798587..01741fc 100644
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -550,6 +550,7 @@ arm_init(
+ 	 */
+ 	PE_state.video.v_baseAddr = (unsigned long)ml_static_ptovirt(
+ 		(vm_offset_t)(PE_state.video.v_baseAddr & ~3UL));
++	kebab_early_mark(28, "arm_vm_init returned; video base converted");
+ 
+ 	/* KEBAB: map the ramoops zone before the console exists, so a stall inside
+ 	 * PE_create_console() still leaves a log behind. */
+diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
+index a67753b..dec1262 100644
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -2314,7 +2314,9 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+     }
+ #endif
+ #endif
++	kebab_early_mark(26, "pmap_bootstrap next");
+ 	pmap_bootstrap(dynamic_memory_begin);
++	kebab_early_mark(27, "pmap_bootstrap done");
+ 
+ 	disable_preemption();
+ 
