@@ -1,0 +1,59 @@
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -523,6 +523,10 @@
+ 
+ 	boot_progress_stage("arm_vm_init enter");
+ 	arm_vm_init(xmaxmem, args);
++
++	/* KEBAB: map the ramoops zone before the console exists, so a stall inside
++	 * PE_create_console() still leaves a log behind. */
++	boot_progress_start();
+ 	boot_progress_stage("arm_vm_init returned");
+ 
+ 	if (debug_boot_arg) {
+@@ -536,9 +540,12 @@
+ 	PE_consistent_debug_inherit();
+ 
+ 	/* Setup debugging output. */
++	boot_progress_stage("serial_init enter");
+ 	const unsigned int serial_exists = serial_init();
++	boot_progress_stage("serial_init returned");
+ 	kernel_startup_initialize_upto(STARTUP_SUB_KPRINTF);
+ 	kprintf("kprintf initialized\n");
++	boot_progress_stage("kprintf initialized");
+ 
+ 	serialmode = 0;
+ 	if (PE_parse_boot_argn("serial", &serialmode, sizeof(serialmode))) {
+@@ -578,10 +585,13 @@
+ 		(void)switch_to_serial_console(); /* Switch into serial mode from video console */
+ 		disableConsoleOutput = FALSE;     /* Allow printfs to happen */
+ 	}
++	boot_progress_stage("PE_create_console enter");
+ 	PE_create_console();
++	boot_progress_stage("PE_create_console returned");
+ 
+ 	/* setup console output */
+ 	PE_init_printf(FALSE);
++	boot_progress_stage("PE_init_printf returned");
+ 
+ #if __arm64__
+ #if DEBUG
+@@ -590,8 +600,10 @@
+ #endif
+ 
+ 	cpu_machine_idle_init(TRUE);
++	boot_progress_stage("cpu_machine_idle_init returned");
+ 
+ 	PE_init_platform(TRUE, &BootCpuData);
++	boot_progress_stage("PE_init_platform(TRUE) returned");
+ 
+ #if __arm64__
+ 	extern bool cpu_config_correct;
+@@ -657,6 +669,7 @@
+ 	 * against string vulnerabilities
+ 	 */
+ 	__stack_chk_guard &= ~(0xFFULL << 8);
++	boot_progress_stage("machine_startup enter");
+ 	machine_startup(args);
+ }
+ 

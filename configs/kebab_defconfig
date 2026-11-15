@@ -31,4 +31,8 @@ CONFIG_XNU_NATIVE_LEGACY_DISPLAY=n
 CONFIG_XNU_NATIVE_ADRENO=n
 CONFIG_XNU_TRUST_CACHE_RUNTIME=n
 CONFIG_XNU_VERIFIED_ROOT_PROBE=n
-CONFIG_XNU_BOOT_PROGRESS=n
+# Boot progress: the kernel log goes to the stock ramoops zone (0xB0000000)
+# through kits/kebab/BootRamoops.c and scripts/build-boot-progress.py.
+CONFIG_XNU_BOOT_PROGRESS=y
+# This board's diagnostics need neither the UFS nor the owner-root paths.
+CONFIG_XNU_BOOT_PROGRESS_ANY=y

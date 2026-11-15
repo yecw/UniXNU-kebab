@@ -1,6 +1,7 @@
 # Board-only XNU patches, plus the 17.7.11 OS patches that still apply.
-# Official os:patches/xnu/series also has zzz-boot-progress, which does not apply
-# on this tree; CONFIG_XNU_BOOT_PROGRESS is off in kebab_defconfig.
+# 10063-kebab-boot-progress.patch is the official zzz-boot-progress.patch ported
+# to this source (its owner-root hunks dropped); the PMGR call site it expects
+# comes from sheng-platform-power.patch.
 component:XnuPrelink/patches/xnu-10063.141.1-security-init.patch
 component:XnuPrelink/patches/xnu-10063.141.1-sparse-index.patch
 10063-pmap-cs-no-ppl.patch
@@ -11,3 +12,10 @@ kebab-ufs-10063.patch
 10063-kebab-panic-vinfo.patch
 # Frame buffer through the physical aperture instead of ml_io_map_unmappable.
 10063-kebab-fb-aperture.patch
+arch:../../../patches/xnu/sheng-platform-power.patch
+10063-kebab-boot-progress.patch
+# The boot progress interrupt hook, inside the kebab GICv3 block of sleh_irq.
+10063-kebab-boot-progress-irq.patch
+# Map the ramoops zone right after arm_vm_init and mark the console steps, so a
+# stall in PE_create_console still leaves a log behind.
+10063-kebab-boot-progress-stages.patch

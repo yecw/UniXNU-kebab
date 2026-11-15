@@ -58,6 +58,9 @@ archives = [
   # Original-PMGR bridge: package/ShengPlatformPower.cpp and this builder are
   # taken from UniXNU-pipa (kits/pipa, scripts/), not rewritten here.
   "build-platform-power.py",
+  # Boot progress zone writer (boot-progress=1); the source is UniXNU-pipa's
+  # BootRamoops.c with its restart/PMIC paths disabled.
+  "build-boot-progress.py",
 ]
 
 # Values below match the donor kernelcache pinned above; re-check them if the
