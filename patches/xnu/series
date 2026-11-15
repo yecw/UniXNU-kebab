@@ -10,8 +10,6 @@ kebab-ufs-10063.patch
 10063-kebab-ufs-early-root.patch
 # Retained boot video info so the panic screen can draw before the console exists.
 10063-kebab-panic-vinfo.patch
-# Frame buffer through the physical aperture instead of ml_io_map_unmappable.
-10063-kebab-fb-aperture.patch
 arch:../../../patches/xnu/sheng-platform-power.patch
 10063-kebab-boot-progress.patch
 # The boot progress interrupt hook, inside the kebab GICv3 block of sleh_irq.
@@ -19,3 +17,18 @@ arch:../../../patches/xnu/sheng-platform-power.patch
 # Map the ramoops zone right after arm_vm_init and mark the console steps, so a
 # stall in PE_create_console still leaves a log behind.
 10063-kebab-boot-progress-stages.patch
+# Early framebuffer console (GFander/KebabEarlyConsole): start.s maps the splash
+# frame buffer V=P, so the kernel can print before arm_vm_init builds the real tables.
+10063-kebab-early-console.patch
+# Temporary: PE_init_platform sub-steps on the early console (bisect arm_init).
+10063-kebab-early-console-pe.patch
+# Convert the recorded frame buffer to the aperture address after arm_vm_init
+# (ml_static_ptovirt must not run before it).
+10063-kebab-video-base.patch
+# Temporary: arm_vm_init sub-steps on the early console (bisect the stall).
+10063-kebab-vm-marks.patch
+# Temporary: the physmap init and the TTBR switch on the early console.
+10063-kebab-vm-marks2.patch
+# Keep the early console alive after TTBR0 is dropped: a frame buffer alias in the
+# final tables (GFander/KebabEarlyConsole, 4 KiB form).
+10063-kebab-early-alias.patch

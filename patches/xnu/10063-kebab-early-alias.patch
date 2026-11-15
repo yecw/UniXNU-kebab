@@ -1,0 +1,101 @@
+diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
+index f231d82..d85a854 100644
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -1818,6 +1818,40 @@ init_ptpages(tt_entry_t *tt, vm_map_address_t start, vm_map_address_t end, bool
+ #define ARM64_PHYSMAP_SLIDE_RANGE (1ULL << 30) // 1 GB
+ #define ARM64_PHYSMAP_SLIDE_MASK  (ARM64_PHYSMAP_SLIDE_RANGE - 1)
+ 
++#if defined(KEBAB)
++/*
++ * A free 2 MiB slot below the kernel base for a frame buffer alias in the final
++ * tables: the early console lives on the bootstrap V=P mapping, which
++ * set_mmu_ttb(invalid_ttep) removes. GFander/KebabEarlyConsole, 4 KiB form.
++ */
++#define KEBAB_EARLY_FB_VA (VM_MIN_KERNEL_ADDRESS + ARM_TT_L2_SIZE)
++
++static void
++kebab_early_map_final(void)
++{
++	const vm_map_address_t va = KEBAB_EARLY_FB_VA;
++	tt_entry_t l1 = cpu_tte[(va & ARM_TT_L1_INDEX_MASK) >> ARM_TT_L1_SHIFT];
++	tt_entry_t *l2;
++	tt_entry_t *slot;
++
++	if ((l1 & (ARM_TTE_VALID | ARM_TTE_TYPE_MASK)) != (ARM_TTE_VALID | ARM_TTE_TYPE_TABLE)) {
++		/* Nothing maps this slot yet: allocate the L2 table for it. */
++		tt_entry_t *page = (tt_entry_t *)alloc_ptpage(TRUE);
++		bzero(page, ARM_PGBYTES);
++		cpu_tte[(va & ARM_TT_L1_INDEX_MASK) >> ARM_TT_L1_SHIFT] =
++		    (kvtophys((vm_offset_t)page) & ARM_TTE_TABLE_MASK) | ARM_TTE_TYPE_TABLE | ARM_TTE_VALID;
++		l1 = cpu_tte[(va & ARM_TT_L1_INDEX_MASK) >> ARM_TT_L1_SHIFT];
++	}
++	l2 = (tt_entry_t *)phystokv(l1 & ARM_TTE_TABLE_MASK);
++	slot = &l2[(va & ARM_TT_L2_INDEX_MASK) >> ARM_TT_L2_SHIFT];
++	*slot = 0x9c000000ULL | ARM_TTE_VALID | ARM_TTE_TYPE_BLOCK |
++	    ARM_TTE_BLOCK_SH(SH_OUTER_MEMORY) |
++	    ARM_TTE_BLOCK_ATTRINDX(CACHE_ATTRINDX_WRITECOMB) |
++	    ARM_TTE_BLOCK_AF | ARM_TTE_BLOCK_PNX | ARM_TTE_BLOCK_NX;
++	__asm__ volatile("dsb ishst" ::: "memory");
++}
++#endif /* KEBAB */
++
+ void
+ arm_vm_init(uint64_t memory_size, boot_args * args)
+ {
+@@ -2151,6 +2185,9 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+ 	kebab_early_mark(21, "arm_vm_init setup done, switching tables next");
+ 
+ 	kebab_early_mark(30, "arm_vm_physmap_init next");
++#if defined(KEBAB)
++	kebab_early_map_final();
++#endif
+ 	arm_vm_physmap_init(args);
+ 	kebab_early_mark(22, "physmap init done; TTBR switch next");
+ 	set_mmu_ttb_alternate(cpu_ttep & TTBR_BADDR_MASK);
+@@ -2159,9 +2196,13 @@ arm_vm_init(uint64_t memory_size, boot_args * args)
+ 	ml_enable_monitor();
+ #endif
+ 
++#if defined(KEBAB)
++	kebab_early_relocate(KEBAB_EARLY_FB_VA);
++#endif
+ 	set_mmu_ttb(invalid_ttep & TTBR_BADDR_MASK);
+ 
+ 	flush_mmu_tlb();
++	kebab_early_mark(25, "TTBR0 off; console on the kernel alias");
+ 	kva_active = TRUE;
+ 	// global table pointers may need to be different due to physical aperture remapping
+ 	cpu_tte = (tt_entry_t*)(phystokv(cpu_ttep));
+diff --git a/osfmk/arm64/kebab_early.c b/osfmk/arm64/kebab_early.c
+index 5fb7ed4..4f3fbd0 100644
+--- a/osfmk/arm64/kebab_early.c
++++ b/osfmk/arm64/kebab_early.c
+@@ -118,6 +118,15 @@ kebab_early_mark(unsigned int stage, const char *label)
+ 	kebab_early_putc('\n');
+ }
+ 
++void
++kebab_early_relocate(uint64_t base)
++{
++	kebab_early_mark(23, "leaving bootstrap TTBR0");
++	early_fb = (volatile uint32_t *)(uintptr_t)base;
++	__asm__ volatile("dsb sy" ::: "memory");
++	kebab_early_mark(24, "kernel framebuffer VA live");
++}
++
+ void
+ kebab_early_disable(void)
+ {
+diff --git a/osfmk/arm64/kebab_early.h b/osfmk/arm64/kebab_early.h
+index 415b3ee..0766614 100644
+--- a/osfmk/arm64/kebab_early.h
++++ b/osfmk/arm64/kebab_early.h
+@@ -9,6 +9,7 @@
+ #if defined(KEBAB)
+ void kebab_early_mark(unsigned int stage, const char *label);
+ void kebab_early_putc(char c);
++void kebab_early_relocate(uint64_t base);
+ void kebab_early_disable(void);
+ #else
+ static inline void kebab_early_mark(unsigned int stage, const char *label) { (void)stage; (void)label; }

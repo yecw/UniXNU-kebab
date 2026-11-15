@@ -1,0 +1,12 @@
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -2150,7 +2150,9 @@
+ 	arm_set_user_tbi();
+ 	kebab_early_mark(21, "arm_vm_init setup done, switching tables next");
+ 
++	kebab_early_mark(30, "arm_vm_physmap_init next");
+ 	arm_vm_physmap_init(args);
++	kebab_early_mark(22, "physmap init done; TTBR switch next");
+ 	set_mmu_ttb_alternate(cpu_ttep & TTBR_BADDR_MASK);
+ 
+ #if XNU_MONITOR

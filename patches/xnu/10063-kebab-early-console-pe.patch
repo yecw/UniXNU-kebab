@@ -1,0 +1,40 @@
+--- a/pexpert/arm/pe_init.c
++++ b/pexpert/arm/pe_init.c
+@@ -8,6 +8,7 @@
+ #include <mach/vm_param.h>
+ #include <pexpert/protos.h>
+ #include <pexpert/pexpert.h>
++#include "../../osfmk/arm64/kebab_early.h"   /* pacifier: pexpert does not see osfmk includes */
+ #include <pexpert/boot.h>
+ #include <pexpert/device_tree.h>
+ #include <pexpert/pe_images.h>
+@@ -421,6 +422,7 @@
+ 
+ 	if (PE_state.initialized == FALSE) {
+ 		page_protection_type = ml_page_protection_type();
++	kebab_early_mark(8, "ml_page_protection_type done");
+ 		PE_state.initialized = TRUE;
+ 		PE_state.bootArgs = boot_args_ptr;
+ 		PE_state.deviceTreeHead = boot_args_ptr->deviceTreeP;
+@@ -446,6 +448,7 @@
+ 			) % 4;
+ 		PE_state.video.v_scale = ((boot_args_ptr->Video.v_depth >> kBootVideoDepthScaleShift) & kBootVideoDepthMask) + 1;
+ 		PE_state.video.v_display = boot_args_ptr->Video.v_display;
++	kebab_early_mark(9, "video info set");
+ 		strlcpy(PE_state.video.v_pixelFormat, "BBBBBBBBGGGGGGGGRRRRRRRR", sizeof(PE_state.video.v_pixelFormat));
+ 	}
+ 	if (!vm_initialized) {
+@@ -456,11 +459,13 @@
+ 		 */
+ 		SecureDTInit(PE_state.deviceTreeHead, PE_state.deviceTreeSize);
+ 		pe_identify_machine(boot_args_ptr);
++	kebab_early_mark(10, "SecureDTInit and pe_identify_machine done");
+ 	} else {
+ 		pe_arm_init_interrupts(args);
+ 		pe_arm_init_debug(args);
+ 	}
+ 
++	kebab_early_mark(11, "about to look up the device-tree node");
+ 	if (!vm_initialized) {
+ 		if (kSuccess == (SecureDTFindEntry("name", "device-tree", &entry))) {
+ 			if (kSuccess == SecureDTGetProperty(entry, "target-type",

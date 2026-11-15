@@ -1,0 +1,20 @@
+diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
+index 03e18ef..4798587 100644
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -542,6 +542,15 @@ arm_init(
+ 	kebab_early_mark(3, "about to call arm_vm_init");
+ 	arm_vm_init(xmaxmem, args);
+ 
++	/*
++	 * KEBAB: PE_init_platform(FALSE) recorded the frame buffer before the
++	 * aperture existed, and ml_static_ptovirt() must not run before
++	 * arm_vm_init() (it stops the boot there). Convert it now, while
++	 * PE_create_console later still reads PE_state.video.
++	 */
++	PE_state.video.v_baseAddr = (unsigned long)ml_static_ptovirt(
++		(vm_offset_t)(PE_state.video.v_baseAddr & ~3UL));
++
+ 	/* KEBAB: map the ramoops zone before the console exists, so a stall inside
+ 	 * PE_create_console() still leaves a log behind. */
+ 	boot_progress_start();

@@ -29,6 +29,8 @@ typedef unsigned char u8;
 
 extern u64 ml_io_map(u64 phys_addr, u64 size);
 extern u64 ml_static_ptovirt(u64 paddr);
+// The aperture bases: zero until arm_vm_init runs, so the cards must not be drawn before it.
+extern u64 gVirtBase;
 extern int kernel_thread_start(void (*continuation)(void *, int), void *parameter, void **new_thread);
 extern void thread_deallocate(void *thread);
 extern void IOSleep(unsigned milliseconds);
@@ -93,6 +95,7 @@ static void put(const char *text, unsigned n) {
 // these. The colour says which stage the kernel reached; a photo reads it.
 static void cards_draw(void) {
   if (!fb) {
+    if (!gVirtBase) return;                 // arm_vm_init has not set the aperture yet
     fb = (volatile u32 *)ml_static_ptovirt(FB_BASE);
     if (!fb) return;
   }

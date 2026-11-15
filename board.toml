@@ -119,7 +119,7 @@ defines = { ENABLE_SECUREBOOT = 0, DEVICE_MODEL = 0 }
 # device's own firmware: MADT (GICv3 0x17A00000 / 0x17A60000), MemoryMapLib
 # (DRAM base 0x80000000), and the UFS host controller measured at 0x01D84000.
 [payload.adt]
-owned_memory_size = "0xC0000000"   # DarwinBoot window: 256 MiB is too small for arm_vm_init
+owned_memory_size = "0x100000000"   # 4 GiB: the window the 2026-11 record reached the kernel with
 tool = "scripts/make-kebab-adt.py"
 cpu_regs = "0,0x100,0x200,0x300,0x400,0x500,0x600,0x700"
 ipad_identity = false
@@ -134,8 +134,10 @@ volume = "KEBABESP"
 size_mib = 64
 loader = "firmware"
 title = "kebab first boot: source 4K XNU to console"
-dram_size = "0xC0000000"   # one 3 GiB DRAM window at 0xC0000000
+dram_size = "0xC0000000"   # must match the hardware DTS memory node
 panic_screen = true
+# The early console prints arm_init stages on the panel; no reset probe (SMC
+# SYSTEM_RESET does not reset this board, so it only hangs the kernel).
 # TEMPORARY: print a message through panic() at a chosen point; the panic screen
 # draws it on the panel (no console, no UART). Remove once the point is answered.
 # No entry probe: this is the baseline boot image.

@@ -1,0 +1,26 @@
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -41,6 +41,7 @@
+ #include <machine/atomic.h>
+ #include <arm64/proc_reg.h>
+ #include <arm64/lowglobals.h>
++#include <arm64/kebab_early.h>
+ #include <arm/cpu_data_internal.h>
+ #include <arm/misc_protos.h>
+ #include <pexpert/arm64/boot.h>
+@@ -1820,6 +1821,7 @@
+ void
+ arm_vm_init(uint64_t memory_size, boot_args * args)
+ {
++	kebab_early_mark(20, "arm_vm_init entered");
+ 	vm_map_address_t va_l1, va_l1_end;
+ 	tt_entry_t       *cpu_l1_tte;
+ 	vm_map_address_t va_l2, va_l2_end;
+@@ -2146,6 +2148,7 @@
+ #endif /* CONFIG_CPU_COUNTERS */
+ 
+ 	arm_set_user_tbi();
++	kebab_early_mark(21, "arm_vm_init setup done, switching tables next");
+ 
+ 	arm_vm_physmap_init(args);
+ 	set_mmu_ttb_alternate(cpu_ttep & TTBR_BADDR_MASK);
