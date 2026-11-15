@@ -37,3 +37,5 @@ arch:../../../patches/xnu/sheng-platform-power.patch
 # The 4 KiB capacity patch leaves 16 bootstrap table pages; arm_vm_init allocates
 # more than that for the dynamic range and start.s hangs when the pool is out.
 10063-kebab-bootstrap-pool.patch
+# Temporary: the L3 loop after pmap_bootstrap and its first L1 slot.
+10063-kebab-l3-diagnostics.patch

@@ -1,0 +1,14 @@
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -2335,6 +2335,11 @@
+ 
+ 	cpu_l1_tte = cpu_tte + ((va_l1 & ARM_TT_L1_INDEX_MASK) >> ARM_TT_L1_SHIFT);
+ 
++	kebab_early_mark(50, "L3 loop: dynamic begin, first L1 slot");
++	kebab_early_hex((uint64_t)va_l1);
++	kebab_early_hex((uint64_t)*cpu_l1_tte);
++	kebab_early_hex((uint64_t)((tt_entry_t *)phystokv((*cpu_l1_tte) & ARM_TTE_TABLE_MASK)));
++
+ 	while (va_l1 < va_l1_end) {
+ 		va_l2 = va_l1;
+ 
