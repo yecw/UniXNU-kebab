@@ -39,3 +39,7 @@ arch:../../../patches/xnu/sheng-platform-power.patch
 10063-kebab-bootstrap-pool.patch
 # Temporary: the L3 loop after pmap_bootstrap and its first L1 slot.
 10063-kebab-l3-diagnostics.patch
+# Temporary: every eighth L3 allocation and what alloc_ptpage returned.
+10063-kebab-l3-iterations.patch
+# Temporary: the second L3 loop (CPU windows) after the dynamic range.
+10063-kebab-cpuwin-marks.patch

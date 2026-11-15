@@ -5,7 +5,7 @@
   * The physical and virtual bases may each straddle an extra 1 GiB region.
   */
 -#define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 16)
-+#define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 128)   /* arm_vm_init allocates far more than 16 for the dynamic range */
++#define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 1024)   /* 4 KiB L3 pages cover 2 MiB each: the CPU windows loop needs many */
  #else /* defined(ARM_LARGE_MEMORY) */
  #define BOOTSTRAP_TABLE_SIZE (ARM_PGBYTES * 8)
  #endif /* defined(ARM_LARGE_MEMORY) */

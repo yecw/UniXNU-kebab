@@ -1,0 +1,24 @@
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -2404,6 +2404,9 @@
+ 	 */
+ 	va_l1 = (VM_MAX_KERNEL_ADDRESS & CPUWINDOWS_BASE_MASK) - PE_EARLY_BOOT_VA;
+ 	va_l1_end = VM_MAX_KERNEL_ADDRESS;
++	kebab_early_mark(60, "cpu windows loop: begin and end");
++	kebab_early_hex((uint64_t)va_l1);
++	kebab_early_hex((uint64_t)va_l1_end);
+ 
+ 	cpu_l1_tte = cpu_tte + ((va_l1 & ARM_TT_L1_INDEX_MASK) >> ARM_TT_L1_SHIFT);
+ 
+@@ -2425,6 +2428,11 @@
+ 
+ 			/* Allocate a page and setup L3 Table TTE in L2 */
+ 			ptp = (pt_entry_t *) alloc_ptpage(FALSE);
++			static unsigned int kebab_l3_count2;
++			if ((kebab_l3_count2++ & 31) == 0) {
++				kebab_early_mark(61, "cpu windows L3, alloc_ptpage returned");
++				kebab_early_hex((uint64_t)ptp);
++			}
+ 			ptp_phys = (pmap_paddr_t)kvtophys((vm_offset_t)ptp);
+ 
+ 			bzero(ptp, ARM_PGBYTES);

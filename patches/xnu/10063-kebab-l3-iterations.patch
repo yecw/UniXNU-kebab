@@ -1,0 +1,14 @@
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -2358,6 +2358,11 @@
+ 
+ 			/* Allocate a page and setup L3 Table TTE in L2 */
+ 			ptp = (pt_entry_t *) alloc_ptpage(FALSE);
++			static unsigned int kebab_l3_count;
++			if ((kebab_l3_count++ & 7) == 0) {
++				kebab_early_mark(51, "L3 iteration, alloc_ptpage returned");
++				kebab_early_hex((uint64_t)ptp);
++			}
+ 			ptp_phys = (pmap_paddr_t)kvtophys((vm_offset_t)ptp);
+ 
+ 			bzero(ptp, ARM_PGBYTES);
