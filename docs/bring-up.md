@@ -1012,3 +1012,65 @@ which is where the next device work belongs.
 
 QEMU was run with 1 GiB (`dram_size`/`owned_memory_size` reduced for the
 WSL host) and AAVMF instead of the macOS EDK2 path.
+
+## 2026-11-15: the console wall after the MMU
+
+The firmware and the loader are settled: the menu renders, the keys work,
+`\EFI\UniXNU\unixnu.toml` and both payload files open, and the hand-off prints
+the virtual and physical bases, the 3 GiB window, EL1, 4 KiB granule support
+and a successful `ExitBootServices` on the first attempt. The entry probe then
+paints its green, blue and magenta bands; what follows is the console.
+
+**Order inside `_arm_init`.** Reading `osfmk/arm/arm_init.c` settles what the
+probes could not:
+
+```text
+arm_vm_init -> serial_init / kprintf -> PE_create_console()
+            -> PE_init_printf -> cpu_machine_idle_init
+            -> PE_init_platform (second call) -> machine_startup -> machine_conf
+```
+
+`PE_create_console()` runs **before** `machine_startup()`. A probe placed at
+`_machine_conf`, or a marker painted from `machine_startup()`, can therefore
+never fire: the black panel that follows the bands is the console creation
+clearing the screen, and every experiment aimed at `machine_conf` measured
+nothing.
+
+**Where it stops.** The kernel stops inside `PE_create_console()`: with a probe
+at `_PE_init_printf` (the first symbol after it) nothing is drawn either, and
+`check_for_panic_log()` is not the cause (the payload was rebuilt without the
+`/pram` node and nothing changed).
+
+**Two console fixes did not move it.**
+
+- XNU's `initialize_screen()` uses a frame buffer base as a virtual address
+  unless bit 0 marks it physical (`kernel_map` is already up). `DarwinBoot` now
+  sets `Args->Video[0] |= 1`, and the entry probe masks the bit before painting
+  (an odd base faults on the first store while the MMU is off, which showed as
+  "green band then nothing").
+- `patches/xnu/10063-kebab-fb-aperture.patch` hands `PE_init_platform` a
+  `phystokv()` address of the same frame buffer, so `initialize_screen()` never
+  calls `ml_io_map_unmappable()`. The panel still goes black at the same point.
+
+**Stubbing the console is not enough.** With `PE_create_console()` patched to
+`return` the three bands stay unchanged and the `machine_startup()` marker never
+appears, so the stall is not the console alone: the next candidates are the
+printf path `PE_init_printf()` installs (`dump_kva_space()` is the first heavy
+caller in DEBUG builds) and the second `PE_init_platform()`.
+
+**Panic reporting.** The panic screen reads `vinfo`, which only `vcattach()`
+fills during `PE_create_console()`; an early panic therefore parks instead of
+drawing. `patches/xnu/10063-kebab-panic-vinfo.patch` fills a retained
+`_boot_progress_panic_vinfo` from `boot_args` in `machine_startup()` (and paints
+the top eighth of the panel red as a checkpoint), and
+`scripts/patch-xnu-entry-probe.py --panic-at SYMBOL --panic-text TEXT` calls
+`panic()` at a chosen symbol. Neither reaches far enough to draw text while the
+console is missing.
+
+**Next.** Port the official boot progress hooks. `patches/xnu/zzz-boot-progress.patch`
+applies with `patch -F3` to ten of twelve files; the two owner-root hunks in
+`bsd/kern/bsd_init.c` and `kern_exec.c` do not apply and one PMGR hunk needs its
+context rewritten. `scripts/build-xnu-4k-baseline.sh` requires `NATIVE_UFS` and
+`OWNER_ROOT_AUDIT` for `XNU_BOOT_PROGRESS=1`, and the archive its builder
+expects (`kits/*/BootRamoops.c`) has to be adapted: the zone it writes,
+`0xB0000000`, is already in this board's live device tree as `ramoops`.

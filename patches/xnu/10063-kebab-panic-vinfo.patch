@@ -1,0 +1,58 @@
+diff --git a/osfmk/arm64/machine_routines.c b/osfmk/arm64/machine_routines.c
+index 2056712..cba6a0b 100644
+--- a/osfmk/arm64/machine_routines.c
++++ b/osfmk/arm64/machine_routines.c
+@@ -496,9 +496,53 @@ user_timebase_type(void)
+ #endif
+ }
+ 
++/*
++ * KEBAB: retained boot video information for the panic screen.
++ *
++ * The kernel's video console fills vinfo only when PE_create_console runs, which
++ * is far too late for a panic during arm_init. The panic screen
++ * (scripts/xnu-panic-screen.c) prefers this symbol over vinfo, so filling it
++ * before machine_conf() gives every early checkpoint a way to draw text on the
++ * panel. The frame buffer lies inside the physical aperture that arm_vm_init()
++ * installed, so phystokv() of the boot video base is writable here.
++ */
++struct kebab_panic_vinfo {
++	unsigned int  v_height;
++	unsigned int  v_width;
++	unsigned int  v_depth;
++	unsigned int  v_rowbytes;
++	unsigned long v_baseaddr;
++};
++struct kebab_panic_vinfo boot_progress_panic_vinfo;
++
+ void
+ machine_startup(__unused boot_args * args)
+ {
++	boot_progress_panic_vinfo.v_height   = (unsigned int)args->Video.v_height;
++	boot_progress_panic_vinfo.v_width    = (unsigned int)args->Video.v_width;
++	boot_progress_panic_vinfo.v_depth    = (unsigned int)args->Video.v_depth;
++	boot_progress_panic_vinfo.v_rowbytes = (unsigned int)args->Video.v_rowBytes;
++	boot_progress_panic_vinfo.v_baseaddr = (unsigned long)phystokv((vm_offset_t)args->Video.v_baseAddr);
++
++	/*
++	 * KEBAB: paint the top eighth of the panel red from here. The firmware
++	 * bands above it prove the kernel entry ran; this band proves the kernel
++	 * reached machine_startup() and that phystokv() of the boot video base is
++	 * a writable mapping. Remove once the kernel has a real console.
++	 */
++	if (boot_progress_panic_vinfo.v_baseaddr != 0 && boot_progress_panic_vinfo.v_depth == 32) {
++		volatile unsigned int *fb = (volatile unsigned int *)boot_progress_panic_vinfo.v_baseaddr;
++		unsigned int          row, col;
++		unsigned int          rows = boot_progress_panic_vinfo.v_height / 8;
++		unsigned int          rb   = boot_progress_panic_vinfo.v_rowbytes / 4;
++
++		for (row = 0; row < rows; row++) {
++			for (col = 0; col < boot_progress_panic_vinfo.v_width; col++) {
++				fb[(unsigned long)row * rb + col] = 0xFFFF0000u;
++			}
++		}
++	}
++
+ #if defined(HAS_IPI) && (DEVELOPMENT || DEBUG)
+ 	if (!PE_parse_boot_argn("fastipi", &gFastIPI, sizeof(gFastIPI))) {
+ 		gFastIPI = 1;

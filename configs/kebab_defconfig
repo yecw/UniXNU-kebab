@@ -5,6 +5,12 @@
 CONFIG_XNU_BUILD_ARCHIVES=y
 CONFIG_XNU_ARM_DT_PLATFORM=y
 CONFIG_XNU_ARMCPU=y
+# Original-PMGR bridge (package/ShengPlatformPower.cpp, scripts/build-platform-power.py):
+# the working SM8250 ports panic in AMFI with "No PMGR" without it.
+CONFIG_XNU_SHENG_PMGR=y
+# Panic log region from the ADT (/pram + /chosen/embedded-panic-log-size); the
+# payload's panic screen then has somewhere to report to.
+CONFIG_XNU_DT_PANIC_REGION=y
 CONFIG_XNU_SOURCE_CORECRYPTO14=y
 CONFIG_XNU_SOURCE_PTHREAD=y
 CONFIG_XNU_NATIVE_ARCH_TIMER=y
@@ -14,7 +20,10 @@ CONFIG_XNU_CRYPTO_BOOTSTRAP="prelinked"
 CONFIG_XNU_ARMVIRT_PLATFORM=n
 CONFIG_XNU_EXTRA_LD_ARCHIVES="{tree}/build/kebab-stubs/libKebabStubs.a"
 
-CONFIG_XNU_NATIVE_UFS=y
+# kebab_ufs.c is linked from the device XNU patches. Do not enable the
+# ShengUfs (SM8550 NativeUfs) archive; build-xnu-4k-baseline.sh would then
+# require build/sheng-ufs/libShengUfs.a, which this board does not build.
+CONFIG_XNU_NATIVE_UFS=n
 CONFIG_XNU_NATIVE_AES=n
 CONFIG_XNU_NATIVE_VIRTIO_BLOCK=n
 CONFIG_XNU_NATIVE_RAM_BLOCK=n

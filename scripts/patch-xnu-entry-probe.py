@@ -52,6 +52,7 @@ TIMEBASE = 19200000
 
 PAINT = """
   ldr x1, [{args}, #0x28]
+  bic x1, x1, #3          // the booter marks a physical frame buffer with bit 0
   ldr x2, [{args}, #0x38]
   ldr x3, [{args}, #0x48]
   mul x2, x2, x3
@@ -337,6 +338,23 @@ def rebase(kernel, data):
     return names
 
 
+
+def is_unused_padding(chunk):
+    """Zeros or an ARM64 NOP sled after the entry branch are unused padding."""
+    if not any(chunk):
+        return True
+    nop = 0xD503201F
+    nop_bytes = struct.pack('<I', nop)
+    i = 0
+    n = len(chunk)
+    while i + 4 <= n:
+        if struct.unpack_from('<I', chunk, i)[0] != nop:
+            return False
+        i += 4
+    rest = chunk[i:]
+    return (not rest) or rest == nop_bytes[:len(rest)]
+
+
 def file_offset(va):
     for vmaddr, vmsize, fileoff, filesize in SEGMENTS:
         if vmaddr <= va < vmaddr + min(vmsize, filesize):
@@ -373,6 +391,9 @@ def main():
     parser.add_argument('--no-reset', action='store_true', help='no reset probe at all')
     parser.add_argument('--reset-at', metavar='SYMBOL',
                         help='terminal reset at the first instruction of SYMBOL')
+    parser.add_argument('--panic-at', metavar='SYMBOL',
+                        help='call _panic() at the first instruction of SYMBOL (used with --panic-screen to print a message)')
+    parser.add_argument('--panic-text', default='PROBE', help='message the --panic-at probe prints')
     parser.add_argument('--occurrence', type=int, default=1, help='which call to SYMBOL (1 = first)')
     parser.add_argument('--in', dest='function', default='_arm_init', help='function that makes the call (default _arm_init)')
     args = parser.parse_args()
@@ -390,7 +411,7 @@ def main():
         if word(va) != value:
             raise SystemExit(f'{va:#x} holds {word(va):#010x}, expected {value:#010x}: not the kernel these probes are for')
     for va in CAVES.values():
-        if any(data[file_offset(va):file_offset(va) + CAVE_SIZE]):
+        if not is_unused_padding(data[file_offset(va):file_offset(va) + CAVE_SIZE]):
             raise SystemExit(f'Padding at {va:#x} is not empty')
 
     # (site, cave stage, symbols the cave is linked with)
@@ -427,14 +448,14 @@ def main():
     if args.panic_screen:
         # Right after the last probe cave in use, so the padding is shared as tightly as possible.
         PANIC_CAVE = max(CAVES[stage] for _, stage, _ in sites) + CAVE_SIZE
-        if word(PANIC_VA) in (0, 0xFFFFFFFF) or any(data[file_offset(PANIC_CAVE):file_offset(PANIC_CAVE_END)]):
+        if word(PANIC_VA) in (0, 0xFFFFFFFF) or not is_unused_padding(data[file_offset(PANIC_CAVE):file_offset(PANIC_CAVE_END)]):
             raise SystemExit('panic() or the panic screen padding is not as expected')
         with tempfile.TemporaryDirectory() as tmp:
             code, load, entry = assemble_c(ROOT / 'scripts/xnu-panic-screen.c', PANIC_CAVE, Path(tmp), kernel_names)
             common_entry = panic_common_entry(Path(tmp), code, load)
         if load + len(code) > PANIC_CAVE_END:
             raise SystemExit(f'panic screen is {len(code):#x} bytes at {load:#x}, the padding ends at {PANIC_CAVE_END:#x}')
-        if any(data[file_offset(load):file_offset(load) + len(code)]):
+        if not is_unused_padding(data[file_offset(load):file_offset(load) + len(code)]):
             raise SystemExit(f'Padding at {load:#x} is not empty')
         data[file_offset(load):file_offset(load) + len(code)] = code
         struct.pack_into('<I', data, file_offset(PANIC_VA), branch(PANIC_VA, entry))
@@ -443,6 +464,35 @@ def main():
             raise SystemExit('Common panic funnel is missing; refuse a partially covered panic screen')
         struct.pack_into('<I', data, file_offset(common), branch(common, common_entry))
         description += f', panic screen ({len(code):#x} bytes at {entry:#x}; common funnel at {common:#x})'
+        panic_end = load + len(code)
+    else:
+        panic_end = PANIC_CAVE_END
+    if args.panic_at:
+        # Print a message through panic() at a chosen function: the panic screen
+        # then draws "<text>\nprobe: <symbol>" on the panel, which is the only
+        # text channel there is before a kernel console exists.
+        by_name = {name: va for va, name in kernel_symbols(args.kernel).items()}
+        symbol = args.panic_at if args.panic_at in by_name else '_' + args.panic_at.lstrip('_')
+        if symbol not in by_name:
+            raise SystemExit(f'No symbol {args.panic_at} in the kernel')
+        entry_va = by_name[symbol]
+        text = args.panic_text.replace('"', "'")
+        source = ('.text\n.global _start\n_start:\n'
+                  '  adr x0, msg\n'
+                  '  bl panic_target\n'
+                  '  b .\n'
+                  'msg: .asciz "' + text + '\"\n')
+        cave = (panic_end + 3) & ~3
+        with tempfile.TemporaryDirectory() as tmp:
+            code = assemble(source, cave, {'panic_target': PANIC_VA}, Path(tmp))
+        if cave + len(code) > PANIC_CAVE_END:
+            raise SystemExit(f'no room for the panic probe cave: 0x{len(code):#x} bytes at {cave:#x}, '
+                             f'padding ends at {PANIC_CAVE_END:#x}')
+        if not is_unused_padding(data[file_offset(cave):file_offset(cave) + ((len(code) + 3) & ~3)]):
+            raise SystemExit(f'panic probe padding at {cave:#x} is not empty')
+        data[file_offset(cave):file_offset(cave) + len(code)] = code
+        struct.pack_into('<I', data, file_offset(entry_va), branch(entry_va, cave))
+        description += f', panic probe at {symbol} ({entry_va:#x}) -> 0x{cave:#x}'
     args.kernel.write_bytes(data)
     print(f'patched {args.kernel.name}: stage 1 blue bar, stage 2 magenta bar, {description}')
 

@@ -1,0 +1,22 @@
+diff --git a/pexpert/arm/pe_init.c b/pexpert/arm/pe_init.c
+--- a/pexpert/arm/pe_init.c
++++ b/pexpert/arm/pe_init.c
+@@ -425,7 +425,17 @@
+ 		PE_state.bootArgs = boot_args_ptr;
+ 		PE_state.deviceTreeHead = boot_args_ptr->deviceTreeP;
+ 		PE_state.deviceTreeSize = boot_args_ptr->deviceTreeLength;
+-		PE_state.video.v_baseAddr = boot_args_ptr->Video.v_baseAddr;
++		/*
++		 * KEBAB: use the kernel physical aperture for the frame buffer.
++		 *
++		 * initialize_screen() maps a physical v_baseAddr with
++		 * ml_io_map_unmappable(), which never returns on this board: the
++		 * console init stops with the panel already cleared. arm_vm_init()
++		 * has mapped the DRAM aperture, so hand initialize_screen a virtual
++		 * address instead; it then uses the value as is, with no mapping call.
++		 */
++		PE_state.video.v_baseAddr = (unsigned long)ml_static_ptovirt(
++			(vm_offset_t)(boot_args_ptr->Video.v_baseAddr & ~3UL));
+ 		PE_state.video.v_rowBytes = boot_args_ptr->Video.v_rowBytes;
+ 		PE_state.video.v_width = boot_args_ptr->Video.v_width;
+ 		PE_state.video.v_height = boot_args_ptr->Video.v_height;

@@ -2,20 +2,36 @@
 
 UniXNU device repository for the **OnePlus 8T (kebab, Qualcomm SM8250)**.
 
-## Status (2026-11-04)
+## Status (2026-11-15)
 
 Tested on a KB2000 (12+256, ColorOS 14, unlocked).
 
 | Stage | State |
 | --- | --- |
-| Mu-Silicium UEFI, menu, payload volume, DarwinBoot | working |
-| old-fw CI kernel build | working; the fork's Actions are disabled, so builds run from the temporary `stevedang67889/UniXNU-ci` mirror |
-| source-level GICv3 (`pe_fiq.c` + `sleh_irq`) | ported from GFander's kebab tree and builds (`10063-kebab-gic-vtimer.patch`) |
-| hardware console | the source-GIC images currently show only colour bars, no text; the binary-GIC images still show the early log |
-| binary-GIC + UFS probe | `ufsprobe2` flashed; no green band 15 appeared, so `IOFindBSDRoot` is not reached |
-| UFS root (`rd=ufsroot0`) | not confirmed on hardware yet |
-| `bsd_init` bring-up (2026-11-03) | reached; retting `platform_stall_panic_or_spin`, `mac_policy_initmach` and `PE_lockdown_iokit` gets the kernel into `bsd_init` |
-| `IOFindBSDRoot` | not reached yet; the source-level early-root hook is staged, but the new CI kernel currently stops after the GIC bands and before `bsd_init` |
+| Mu-Silicium UEFI, menu, payload volume, DarwinBoot | device-verified; the menu renders, the keys work, the payload TOML and both kernel files open, and the hand-off reports EL1, 4 KiB granule support and a successful `ExitBootServices` |
+| Kernel entry | device-verified; the entry probe paints the green, blue and magenta bands (kernel entry, MMU enable) |
+| Kernel after the MMU | stops inside `PE_create_console`, before `PE_init_printf` and `machine_startup` |
+| PMGR bridge | linked (`CONFIG_XNU_SHENG_PMGR`); `package/ShengPlatformPower.cpp` and `scripts/build-platform-power.py` come from `UniXNU-pipa`, not from this repository |
+| Panic log region | compiled in (`CONFIG_XNU_DT_PANIC_REGION`); `scripts/patch-xnu-entry-probe.py --panic-at` calls `panic()` at a chosen symbol and the panic screen draws from a retained boot video record (`patches/xnu/10063-kebab-panic-vinfo.patch`) |
+| Console | not reached; `PE_create_console` stops even with the frame buffer marked physical, and with the function stubbed the kernel still stops before `machine_startup` |
+| UFS root | not confirmed on hardware yet |
+
+The 2026-11-15 work added the PMGR bridge, `XNU_DT_PANIC_REGION`, the
+`armcpu-*`/`sheng-pmgr`/`debug=0x14e` kernel arguments, the panic probe and the
+frame-buffer aperture path. Two facts came out of it:
+
+- `PE_create_console()` runs **before** `machine_startup()` in `_arm_init`
+  (`arm_vm_init`, `serial_init`, `PE_create_console`, `PE_init_printf`,
+  `cpu_machine_idle_init`, the second `PE_init_platform`, `machine_startup`), so
+  the console is created before `machine_conf` and a probe there can never fire.
+- XNU's `initialize_screen()` takes a virtual frame buffer address unless bit 0
+  marks it physical. DarwinBoot now sets that bit in `Args->Video[0]`, and the
+  entry probe masks it before painting (an odd base faults with the MMU off).
+
+The next diagnostic is the official boot progress hooks: `zzz-boot-progress.patch`
+applies with fuzz except two owner-root hunks and one PMGR hunk, the build guard
+requires `NATIVE_UFS` and `OWNER_ROOT_AUDIT`, and its ramoops zone `0xB0000000`
+matches this board's live device tree.
 
 The earlier 2026-11-01 result was: binary GIC handler installed, first PPI-27
 IRQ fired, but the virtual timer did not repeat; the last visible line was
@@ -23,20 +39,15 @@ IRQ fired, but the virtual timer did not repeat; the last visible line was
 stub with GFander's `HAS_GIC_V3` / Group-1 `sleh_irq` design and is the active
 path now.
 
-The framebuffer logger was made standalone for source-GIC builds (it maps
-`PE_state.video` through `ml_io_map` and also hooks `_kprintf`), but source-GIC
-images still show no text. The next diagnostic is a direct marker or UART.
-On the binary-GIC path the probes reach `bsd_init`; the current root blocker is
-the `IOFindBSDRoot` wait, which needs a source-level early hook.
-
 ## Layout
 
 | Path | Contents |
 | --- | --- |
 | `board.toml` | board description, donor IPSW, kernel archives, payload and boot image parameters |
 | `configs/kebab_defconfig` | minimal kernel configuration (DT platform, no device drivers yet) |
-| `scripts/` | archive builders and the kebab ADT generator |
+| `scripts/` | archive builders, the kebab ADT generator, the entry probe/panic probe and the PMGR bridge builder |
 | `package/unixnu.toml` | UniXNU boot menu configuration for the device kit |
+| `package/ShengPlatformPower.cpp` | original PMGR bridge linked by `CONFIG_XNU_SHENG_PMGR` |
 | `docs/bring-up.md` | what was measured on hardware and what it took to boot |
 | `drivers/KebabRamDisk` | submodule: UEFI driver that exposes the firmware-embedded payload as a RAM disk |
 | `unixnu.lock` | pinned source commits written by `unixnu fetch` |

@@ -47,7 +47,7 @@ windows = [
 [kernel]
 defconfig = "kebab_defconfig"
 config_fragments = ["arch:configs/common.config", "soc:configs/sm8250.config"]
-patch_series = ["device:patches/xnu/series"]
+patch_series = ["arch:patches/xnu/series", "soc:patches/xnu/series", "device:patches/xnu/series"]
 archives = [
   "build-corecrypto-14.py",
   "build-corecrypto-14.py --namespace",
@@ -55,12 +55,15 @@ archives = [
   "build-arm-driver.py ArmCpu",
   "build-libpthread-kernel.py",
   "build-kebab-stubs.py",
+  # Original-PMGR bridge: package/ShengPlatformPower.cpp and this builder are
+  # taken from UniXNU-pipa (kits/pipa, scripts/), not rewritten here.
+  "build-platform-power.py",
 ]
 
 # Values below match the donor kernelcache pinned above; re-check them if the
 # IPSW ever changes.
 [kernel.prelink]
-tool = "kits/NativePrelink/emit_prelink.py"
+tool = "kits/XnuPrelink/emit_prelink.py"
 kernel = "build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837.unstripped.noctf"
 kernelcache_sha256 = "f18b4df865405f2a287b84977d7aca745e056d656d9fc9df1662970ce2969de7"
 slide = "-0x1000000"
@@ -130,9 +133,20 @@ loader = "firmware"
 title = "kebab first boot: source 4K XNU to console"
 dram_size = "0xC0000000"   # one 3 GiB DRAM window at 0xC0000000
 panic_screen = true
+# TEMPORARY: print a message through panic() at a chosen point; the panic screen
+# draws it on the panel (no console, no UART). Remove once the point is answered.
 # No entry probe: this is the baseline boot image.
 kernel_args = [
   "-v",
+  # Early debug output mask and platform/IPI arguments of the working SM8250 ports:
+  # Qualcomm never raises the SGIs that ICC_SGI1R_EL1 asks for, so IPIs have to be
+  # software-pended SPIs (pipa and gts7xlwifi records, UniXNU boot-argument reference).
+  "debug=0x14e",
+  "armcpu-self-ipi=1",
+  "armcpu-spi-ipi=1",
+  "armcpu-diagnostics=1",
+  # Publish the original PMGR nub through the bridge (AMFI panics with "No PMGR" without it).
+  "sheng-pmgr=2",
   "rd=ufsroot0",
   "ufsroot=userdata",
   "rootrw=0",

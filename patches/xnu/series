@@ -1,4 +1,13 @@
-arch:../../../patches/xnu/local-availability.patch
-arch:../../../patches/xnu/kernel-sdk-root.patch
+# Board-only XNU patches, plus the 17.7.11 OS patches that still apply.
+# Official os:patches/xnu/series also has zzz-boot-progress, which does not apply
+# on this tree; CONFIG_XNU_BOOT_PROGRESS is off in kebab_defconfig.
 component:XnuPrelink/patches/xnu-10063.141.1-security-init.patch
 component:XnuPrelink/patches/xnu-10063.141.1-sparse-index.patch
+10063-pmap-cs-no-ppl.patch
+10063-kebab-gic-vtimer.patch
+kebab-ufs-10063.patch
+10063-kebab-ufs-early-root.patch
+# Retained boot video info so the panic screen can draw before the console exists.
+10063-kebab-panic-vinfo.patch
+# Frame buffer through the physical aperture instead of ml_io_map_unmappable.
+10063-kebab-fb-aperture.patch

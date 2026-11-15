@@ -3,3 +3,7 @@ out/
 local.toml
 *.log
 unixnu.local.toml
+
+.cache/
+__pycache__/
+*.pyc
