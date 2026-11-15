@@ -1,58 +1,44 @@
 # UniXNU-kebab
 
-UniXNU device repository for the **OnePlus 8T (kebab, Qualcomm SM8250)**.
+一加 8T（kebab，高通 SM8250）的 UniXNU 设备仓库。
 
-## Status (2026-11-15)
+## 状态（2026-11-15）
 
-Tested on a KB2000 (12+256, ColorOS 14, unlocked).
+在 KB2000（12+256，ColorOS 14，已解锁）上实测。
 
-| Stage | State |
+| 阶段 | 状态 |
 | --- | --- |
-| Mu-Silicium UEFI, menu, payload volume, DarwinBoot | device-verified; the menu renders, the keys work, the payload TOML and both kernel files open, and the hand-off reports EL1, 4 KiB granule support and a successful `ExitBootServices` |
-| Kernel entry | device-verified; the entry probe paints the green, blue and magenta bands (kernel entry, MMU enable) |
-| Kernel after the MMU | stops inside `PE_create_console`, before `PE_init_printf` and `machine_startup` |
-| PMGR bridge | linked (`CONFIG_XNU_SHENG_PMGR`); `package/ShengPlatformPower.cpp` and `scripts/build-platform-power.py` come from `UniXNU-pipa`, not from this repository |
-| Panic log region | compiled in (`CONFIG_XNU_DT_PANIC_REGION`); `scripts/patch-xnu-entry-probe.py --panic-at` calls `panic()` at a chosen symbol and the panic screen draws from a retained boot video record (`patches/xnu/10063-kebab-panic-vinfo.patch`) |
-| Console | not reached; `PE_create_console` stops even with the frame buffer marked physical, and with the function stubbed the kernel still stops before `machine_startup` |
-| UFS root | not confirmed on hardware yet |
+| Mu-Silicium UEFI、菜单、payload 卷、DarwinBoot | 已在真机验证：菜单正常渲染、按键可用、payload 的 `unixnu.toml` 和两个内核文件都能打开，hand-off 报告 EL1、4 KiB 粒度支持、`ExitBootServices` 成功 |
+| 内核入口 | 已在真机验证：entry probe 画出绿、蓝、洋红三条色带（内核入口、MMU 打开） |
+| MMU 之后的内核 | 停在 `arm_vm_init` 返回之前（boot progress 的第一个检查点方块都没出现） |
+| PMGR 桥 | 已链接（`CONFIG_XNU_SHENG_PMGR`）；`package/ShengPlatformPower.cpp` 和 `scripts/build-platform-power.py` 来自 `UniXNU-pipa`，不是本仓库的原创 |
+| panic 日志区 | 已编译进去（`CONFIG_XNU_DT_PANIC_REGION`）；`scripts/patch-xnu-entry-probe.py --panic-at` 可在指定符号处调用 `panic()`，panic screen 用保留的 boot video 记录绘制（`patches/xnu/10063-kebab-panic-vinfo.patch`） |
+| boot progress | 已移植并编入内核（ramoops 环 + 屏幕彩色检查点方块，`patches/xnu/10063-kebab-boot-progress*.patch`），但第一个方块要等 `arm_vm_init` 之后才会画，当前还看不到 |
+| 控制台 | 未到达；把 framebuffer 标记成物理地址、或换成物理 aperture 的 `phystokv` 地址都不能越过它 |
+| UFS root | 还没在真机上确认 |
 
-The 2026-11-15 work added the PMGR bridge, `XNU_DT_PANIC_REGION`, the
-`armcpu-*`/`sheng-pmgr`/`debug=0x14e` kernel arguments, the panic probe and the
-frame-buffer aperture path. Two facts came out of it:
+2026-11-15 这天加了 PMGR 桥、`XNU_DT_PANIC_REGION`、`armcpu-*`/`sheng-pmgr`/`debug=0x14e` 内核参数、panic 探针、framebuffer aperture 路径和官方 boot progress 的移植。得到两条确定的事实：
 
-- `PE_create_console()` runs **before** `machine_startup()` in `_arm_init`
-  (`arm_vm_init`, `serial_init`, `PE_create_console`, `PE_init_printf`,
-  `cpu_machine_idle_init`, the second `PE_init_platform`, `machine_startup`), so
-  the console is created before `machine_conf` and a probe there can never fire.
-- XNU's `initialize_screen()` takes a virtual frame buffer address unless bit 0
-  marks it physical. DarwinBoot now sets that bit in `Args->Video[0]`, and the
-  entry probe masks it before painting (an odd base faults with the MMU off).
+- `PE_create_console()` 在 `_arm_init` 里**先于** `machine_startup()` 执行（顺序是 `arm_vm_init` → `serial_init` → `PE_create_console` → `PE_init_printf` → `cpu_machine_idle_init` → 第二次 `PE_init_platform` → `machine_startup`），所以放在 `machine_conf` 的探针永远打不中。
+- XNU 的 `initialize_screen()` 只有在 **bit 0 置位**时才把 `v_baseAddr` 当物理地址，否则当虚拟地址用。DarwinBoot 现在会置这个位，entry probe 画色带前会先屏蔽它（带标记的地址在 MMU 关闭时非对齐写会 fault）。
 
-The next diagnostic is the official boot progress hooks: `zzz-boot-progress.patch`
-applies with fuzz except two owner-root hunks and one PMGR hunk, the build guard
-requires `NATIVE_UFS` and `OWNER_ROOT_AUDIT`, and its ramoops zone `0xB0000000`
-matches this board's live device tree.
+更早的 2026-11-01 结果是：二进制 GIC handler 装上、第一个 PPI-27 中断触发，但虚拟定时器不重复；最后一行可见输出是 `Unable to find vm tag ?+z for btlog`。现在走的是 GFander 的源码级 GICv3（`HAS_GIC_V3` + Group-1 `sleh_irq`）路线。
 
-The earlier 2026-11-01 result was: binary GIC handler installed, first PPI-27
-IRQ fired, but the virtual timer did not repeat; the last visible line was
-`Unable to find vm tag ?+z for btlog`. The source-GIC path replaces the binary
-stub with GFander's `HAS_GIC_V3` / Group-1 `sleh_irq` design and is the active
-path now.
+## 目录结构
 
-## Layout
-
-| Path | Contents |
+| 路径 | 内容 |
 | --- | --- |
-| `board.toml` | board description, donor IPSW, kernel archives, payload and boot image parameters |
-| `configs/kebab_defconfig` | minimal kernel configuration (DT platform, no device drivers yet) |
-| `scripts/` | archive builders, the kebab ADT generator, the entry probe/panic probe and the PMGR bridge builder |
-| `package/unixnu.toml` | UniXNU boot menu configuration for the device kit |
-| `package/ShengPlatformPower.cpp` | original PMGR bridge linked by `CONFIG_XNU_SHENG_PMGR` |
-| `docs/bring-up.md` | what was measured on hardware and what it took to boot |
-| `drivers/KebabRamDisk` | submodule: UEFI driver that exposes the firmware-embedded payload as a RAM disk |
-| `unixnu.lock` | pinned source commits written by `unixnu fetch` |
+| `board.toml` | 板级描述、donor IPSW、内核 archive、payload 与 boot image 参数 |
+| `configs/kebab_defconfig` | 最小内核配置（DT platform，设备驱动还没接） |
+| `scripts/` | archive builder、kebab ADT 生成器、entry/panic 探针、PMGR 桥与 boot progress 的 builder |
+| `package/unixnu.toml` | 设备 kit 的 UniXNU 启动菜单配置 |
+| `package/ShengPlatformPower.cpp` | `CONFIG_XNU_SHENG_PMGR` 链接的原始 PMGR 桥 |
+| `package/BootRamoops.c` | boot progress 的 ramoops 写入与屏幕检查点方块 |
+| `docs/bring-up.md` | 真机上量到了什么、启动经历了什么 |
+| `drivers/KebabRamDisk` | 子模块：把固件内嵌 payload 暴露成 RAM disk 的 UEFI 驱动 |
+| `unixnu.lock` | `unixnu fetch` 写入的源锁文件 |
 
-## Build (macOS or the GitHub macOS runner)
+## 构建（macOS 或 GitHub 的 macOS runner）
 
 ```sh
 ./unixnu defconfig kebab_defconfig -D ../UniXNU-kebab
@@ -61,78 +47,59 @@ path now.
 ./unixnu build kernel
 ```
 
-Output: `out/kebab/kernel/kernel.macho`.
+产物：`out/kebab/kernel/kernel.macho`。
 
-Without a Mac, fork `UniXNU/UniXNU`, enable Actions and run the **macOS build**
-workflow with:
+没有 Mac 时，fork `UniXNU/UniXNU`、开启 Actions，用 **macOS build** workflow：
 
-| Input | Value |
+| 输入 | 值 |
 | --- | --- |
 | `device_repository` | `<your-user>/UniXNU-kebab` |
 | `defconfig` | `kebab_defconfig` |
 | `steps` | `kernel` |
-| `xcode` | default |
+| `xcode` | 默认 |
 
-## Boot image recipe (what actually boots)
+## 能启动的镜像配方（实测）
 
-The firmware volume is built from Mu-Silicium and packed into an Android boot
-image. Two details decide whether the phone shows anything:
+固件卷由 Mu-Silicium 编译，再打进 Android boot image。两个细节决定手机有没有画面：
 
-1. **The DTB must be the phone's own live DTB.** `Mu-Silicium`'s
-   `Resources/DTBs/kebab.dtb` has no `cont_splash_region@9c000000`, so ABL logs
-   `ERROR: Could not get splash memory region node` and never hands the
-   framebuffer to the firmware: the screen stays on the stock boot logo. Dump
-   the live tree (`adb pull` of the running device tree) and pass that file as
-   `--dtb`.
-2. **Header v2 / 4096-byte pages**, kernel = BootShim + `SILICIUM_UEFI.fd`,
-   `--kernel_offset 0x8000 --tags_offset 0x100 --dtb_offset 0x1f00000`.
+1. **DTB 必须是手机自己的 live DTB。** Mu-Silicium 自带的 `Resources/DTBs/kebab.dtb` 没有 `cont_splash_region@9c000000`，ABL 会打 `ERROR: Could not get splash memory region node`，然后不把 framebuffer 交给固件：屏幕停在原生开机 logo。请从运行中的机器 dump live tree，并用它作 `--dtb`。
+2. **header v2 / 4096 字节页**，kernel = BootShim + `SILICIUM_UEFI.fd`，`--kernel_offset 0x8000 --tags_offset 0x100 --dtb_offset 0x1f00000`。
 
-`fastboot boot` is rejected by ABL (`Failed to load/authenticate boot image`);
-flash to `boot_a` instead and reboot.
+这台机器的 ABL **不支持 `fastboot boot`**（会报 `Failed to load/authenticate boot image`）；要刷到 `boot_b`（或 `boot_a`）再重启。
 
-## Device values
+## 设备参数
 
-| Item | Value | Source |
+| 项目 | 值 | 来源 |
 | --- | --- | --- |
-| SoC | SM8250 (SD865) | live DTB |
-| Debug UART | **`0xA90000`** (QUPv3 SE12, GPIO34/35, 115200 8N1) | live DTB `earlycon=msm_geni_serial,0xa90000` |
-| Second console node | `0x00988000` is `status = "disabled"` | live DTB |
-| Framebuffer / splash | `0x9C000000`, `0x2300000`, 1080 × 2400 | live DTB `cont_splash_region@9c000000` |
-| Panel | `oplus20828samsung_amb655x_1080_2400_cmd` (Samsung AMB655X, command mode) | live DTB |
-| Touch | Synaptics S3908, i2c `a94000` addr `0x4B`, IRQ GPIO39, reset GPIO38 | live DTB |
-| Volume keys | PM8150 GPIO7 (down) / GPIO6 (up) | mainline kebab DTS |
-| UEFI FD | base `0x9FC00000`, size `0x300000` | Mu-Silicium `kebab.toml` |
-| `userdata` size | 233,492,557,824 bytes (57,005,019 × 4096) | `fastboot getvar partition-size:userdata` on the 12+256 unit |
-| `userdata` first LBA | 4,748,320 (GPT of the KB2000 9008 package) | `gpt_main0.bin` |
+| SoC | SM8250（SD865） | live DTB |
+| 调试串口 | **`0xA90000`**（QUPv3 SE12，GPIO34/35，115200 8N1） | live DTB `earlycon=msm_geni_serial,0xa90000` |
+| 第二 console 节点 | `0x00988000` 是 `status = "disabled"` | live DTB |
+| Framebuffer / splash | `0x9C000000`，`0x2300000`，1080 × 2400 | live DTB `cont_splash_region@9c000000` |
+| 面板 | `oplus20828samsung_amb655x_1080_2400_cmd`（三星 AMB655X，command mode） | live DTB |
+| 触摸 | Synaptics S3908，i2c `a94000` 地址 `0x4B`，IRQ GPIO39，reset GPIO38 | live DTB |
+| 音量键 | PM8150 GPIO7（下）/ GPIO6（上） | mainline kebab DTS |
+| UEFI FD | base `0x9FC00000`，size `0x300000` | Mu-Silicium `kebab.toml` |
+| `userdata` 大小 | 233,492,557,824 字节（57,005,019 × 4096） | 12+256 机器上的 `fastboot getvar partition-size:userdata` |
+| `userdata` 起始 LBA | 4,748,320（KB2000 9008 包的 GPT） | `gpt_main0.bin` |
 
-## Remaining work
+## 剩余工作
 
-* **Timer / GIC**: the GIC handler and the first PPI-27 IRQ work, but the
-  virtual timer does not repeat. `CNTV_TVAL_EL0`/`CNTV_CTL_EL0` re-arms after
-  `rtclock_intr`, and a run that skips `rtclock_intr`, both remain static. Fix
-  the periodic tick (or route a different timer source) before chasing UFS.
-* **UFS**: `bsd/dev/kebab_ufs.c` is linked and exposes the BSD `ufsroot0` hook;
-  the ADT has the root `/kebab-ufs` node and the boot args are documented in
-  `board.toml`. Root discovery is not reached yet, so the driver has no hardware
-  result.
-* **Display / touch drivers** for the kernel, and the `userdata` image flash.
+* **`arm_vm_init` 之前的内核停顿**：entry probe 的色带能出，boot progress 的检查点方块一个都不出，说明 `arm_vm_init` 还没返回。下一步要在这里做二分（`boot_progress_stage` + 惰性方块，或官方记录的 `--reset-after arm_vm_init`）。
+* **定时器 / GIC**：GIC handler 和第一个 PPI-27 中断能工作，但虚拟定时器不重复。`CNTV_TVAL_EL0`/`CNTV_CTL_EL0` 在 `rtclock_intr` 之后会重装，跳过 `rtclock_intr` 也一样停住。先解决周期 tick，再谈 UFS。
+* **UFS**：`bsd/dev/kebab_ufs.c` 已链接并提供 BSD 的 `ufsroot0` 钩子，ADT 有根 `/kebab-ufs` 节点，启动参数记在 `board.toml`。root 发现还没走到。
+* **内核显示 / 触摸驱动**，以及 `userdata` 镜像刷写。
+* **Advanced Logger（logDxe）**：`AdvancedLogDxe` 已编进固件，但缺生产者（Mu 只剩 Rust 版）；要 C 版实现 `ALOG v6` + `ALM2` 消息 + 协议 container，并把 `DebugLib` 路由到 `BaseDebugLibAdvancedLogger`、给 framebuffer 串口写 `AdvancedLoggerHdwPortLib` 包装层，约 1.5~2 小时。
 
-## License
+## 许可
 
-BSD-2-Clause-Patent, matching UniXNU and Mu-Silicium.
-## Porting record
+BSD-2-Clause-Patent，与 UniXNU、Mu-Silicium 一致。
 
-[`porting.toml`](porting.toml) is the authoritative record: thirteen areas with
-the measured facts, completion level and evidence for each. Read it before
-changing the port, and update the affected area with every change:
+## 移植记录
+
+[`porting.toml`](porting.toml) 是权威记录：13 个领域，每个都有实测事实、完成度和证据。改移植之前先读它，每次改动同步更新对应领域：
 
 ```sh
 python3 scripts/porting-record.py check --device ../UniXNU-kebab
 ```
 
-[`AGENTS.md`](AGENTS.md) carries the build commands and the two firmware facts
-that are expensive to rediscover. [`docs/bring-up.md`](docs/bring-up.md) keeps
-the chronological measurements.
-Inputs that are not in any repository are named in
-[`proprietary-files.txt`](proprietary-files.txt); [`local.toml.example`](local.toml.example)
-shows the local paths a workstation needs.
+[`AGENTS.md`](AGENTS.md) 记着构建命令和两个"重新发现很贵"的固件事实，[`docs/bring-up.md`](docs/bring-up.md) 保留按时间顺序的测量记录。不在任何仓库里的输入列在 [`proprietary-files.txt`](proprietary-files.txt)；[`local.toml.example`](local.toml.example) 说明工作站需要的本地路径。
