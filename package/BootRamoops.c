@@ -92,7 +92,10 @@ static void put(const char *text, unsigned n) {
 // the console clears the screen when it is created, so the writer thread redraws
 // these. The colour says which stage the kernel reached; a photo reads it.
 static void cards_draw(void) {
-  if (!fb) return;
+  if (!fb) {
+    fb = (volatile u32 *)ml_static_ptovirt(FB_BASE);
+    if (!fb) return;
+  }
   unsigned count = cards;
   if (count > 10) count = 10;
   for (unsigned i = 0; i < count; ++i) {
@@ -166,7 +169,6 @@ void boot_progress_start(void) {
   zone_put(banner, sizeof banner - 1);
   zone_put(early, early_len);
   give(daif);
-  fb = (volatile u32 *)ml_static_ptovirt(FB_BASE);
   cards = 1;
   cards_draw();
   void *thread = 0;
