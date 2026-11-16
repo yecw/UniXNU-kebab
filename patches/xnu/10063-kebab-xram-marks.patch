@@ -1,0 +1,12 @@
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -729,6 +729,9 @@
+ 	 * pa_valid(), the physmap apertures and kebab_extra_memory_admit() use it.
+ 	 */
+ 	kebab_boot_memory_capture(args);
++	kebab_early_mark(70, "xram capture: bank count and bytes");
++	kebab_early_hex((uint64_t)kebab_owned_memory_count);
++	kebab_early_hex((uint64_t)kebab_owned_memory_bytes);
+ #endif
+ 
+ 	ml_parse_cpu_topology();

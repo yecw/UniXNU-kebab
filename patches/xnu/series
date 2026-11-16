@@ -51,3 +51,9 @@ arch:../../../patches/xnu/sheng-platform-power.patch
 10063-kebab-board-header.patch
 # Ported from GFander/KebabCPU (8796): kprintf straight to the frame buffer.
 10063-kebab-kprintf-fb.patch
+# Discontiguous DRAM banks read from /chosen/darwinboot-memory-outside, then the
+# pmap object keyed by that physical span.
+pending/adapt-0366-fdt.patch
+pending/adapt-0367-after-0366.patch
+# Temporary: the outside-bank capture result on the early console.
+10063-kebab-xram-marks.patch

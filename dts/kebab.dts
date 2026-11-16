@@ -14,8 +14,8 @@
 	memory {
 		ddr_device_type = <0x07>;
 		device_type = "memory";
-		// The ADT handoff wants one contiguous range; 12 GiB at 0x80000000 is what
-		// the loader is told. The real LPDDR map is discontiguous (see the boot log).
+		// The window GFander's working kebab baseline reports: boot_mem 8587837440
+		// (8 GiB - 2 MiB) with physBase 0x200004000.
 		reg = <0x00 0xC0000000 0x00 0xC0000000>;
 	};
 
