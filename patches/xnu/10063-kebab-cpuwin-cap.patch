@@ -1,0 +1,14 @@
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -2407,6 +2407,11 @@
+ 	kebab_early_mark(60, "cpu windows loop: begin and end");
+ 	kebab_early_hex((uint64_t)va_l1);
+ 	kebab_early_hex((uint64_t)va_l1_end);
++	/* KEBAB: the printed range ends at ~0, so bound the walk (bring-up only). */
++	if ((uint64_t)va_l1_end > (uint64_t)va_l1 + (uint64_t)512 * 1024 * 1024) {
++		va_l1_end = (vm_map_address_t)((uint64_t)va_l1 + (uint64_t)512 * 1024 * 1024);
++		kebab_early_mark(63, "cpu windows range capped to 512 MiB");
++	}
+ 	kebab_early_mark(62, "avail_start avail_end va_l1 va_l1_end");
+ 	kebab_early_hex((uint64_t)avail_start);
+ 	kebab_early_hex((uint64_t)avail_end);

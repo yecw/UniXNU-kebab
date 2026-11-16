@@ -45,3 +45,5 @@ arch:../../../patches/xnu/sheng-platform-power.patch
 10063-kebab-cpuwin-marks.patch
 # Temporary: the allocator cursors and the CPU windows range.
 10063-kebab-avail-marks.patch
+# Temporary: cap the CPU windows walk, whose end computes to ~0.
+10063-kebab-cpuwin-cap.patch
