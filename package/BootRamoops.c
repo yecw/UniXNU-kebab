@@ -183,7 +183,12 @@ int boot_progress_active(void) {return 0;}
 void boot_progress_bind(unsigned long base, unsigned width, unsigned height, unsigned rowbytes, unsigned depth) {
   (void)base; (void)width; (void)height; (void)rowbytes; (void)depth;
 }
-void boot_progress_putc(char c) {(void)c;}
+void boot_progress_putc(char c)
+{
+	/* kprintf reaches the video console slot now: keep the characters visible. */
+	extern void kebab_early_putc(char c);
+	kebab_early_putc(c);
+}
 void boot_progress_stage(const char *text) {line("stage: ", text); if (cards < 10) ++cards; cards_draw();}
 void boot_progress_irq(u64 pc, u64 cpsr, u64 sp) {(void)pc; (void)cpsr; (void)sp;}
 void boot_progress_poll(void) {}
