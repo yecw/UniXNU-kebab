@@ -205,6 +205,9 @@ def main():
                           if (args.data_ramdisk or args.packed_data_ramdisk) else []),
                         *([('darwinboot-memory-size', struct.pack('<Q', args.owned_memory_size))]
                           if args.owned_memory_size else []),
+                        # DarwinBoot fills these (base, size) pairs at boot with the DRAM banks
+                        # outside the main window; zero-filled means "no extra banks".
+                        ('darwinboot-memory-outside', bytes(16 * 64)),
                         ('dram-base', struct.pack('<Q', DRAM_BASE)),
                         ('dram-size', struct.pack('<Q', args.dram_size)),
                         ('crypto-hash-method', b'sha2-384\0'),
