@@ -47,3 +47,7 @@ arch:../../../patches/xnu/sheng-platform-power.patch
 10063-kebab-avail-marks.patch
 # Temporary: cap the CPU windows walk, whose end computes to ~0.
 10063-kebab-cpuwin-cap.patch
+# GFander/KebabCPU 0028: drop the Pi UART and the subpage L1 inherited from BCM2837.
+10063-kebab-board-header.patch
+# Ported from GFander/KebabCPU (8796): kprintf straight to the frame buffer.
+10063-kebab-kprintf-fb.patch

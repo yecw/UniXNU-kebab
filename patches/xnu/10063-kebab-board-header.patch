@@ -1,0 +1,20 @@
+--- a/pexpert/pexpert/arm64/BCM2837.h
++++ b/pexpert/pexpert/arm64/BCM2837.h
+@@ -43,7 +43,7 @@
+ #define __ARM_VFP__               4
+ #define __ARM_COHERENT_CACHE__    1
+ #define __ARM_DEBUG__             7
+-#define __ARM64_PMAP_SUBPAGE_L1__ 1
++/* KEBAB: no subpage L1 (GFander/KebabCPU 0028); the 39-bit TTBR1 range does not fit the kernel link address. */
+ 
+ /* Explicit native ARMv8.1+ bring-up; the original A53 target has no PAN. */
+ #if defined(XNU_NATIVE_PAN) && XNU_NATIVE_PAN
+@@ -52,7 +52,7 @@
+ 
+ #ifndef ASSEMBLER
+ 
+-#define PI3_UART
++/* KEBAB: no Raspberry Pi UART (GFander/KebabCPU 0028). */
+ 
+ #define PI3_BREAK                               asm volatile("brk #0");
+ 
