@@ -1,0 +1,658 @@
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -63,12 +63,16 @@
+ #include <arm/caches_internal.h>
+ #include <arm/cpu_internal.h>
+ #include <arm64/kebab_early.h>
++#if defined(KEBAB)
++#include <arm64/kebab_boot_memory.h>
++#endif
+ #include <arm/cpu_data_internal.h>
+ #include <arm/cpuid_internal.h>
+ #include <arm/misc_protos.h>
+ #include <arm/machine_cpu.h>
+ #include <arm/rtclock.h>
+ #include <vm/vm_map.h>
++#include <vm/vm_page.h>
+ 
+ #include <libkern/kernel_mach_header.h>
+ #include <libkern/stack_protector.h>
+@@ -154,6 +158,127 @@
+ #define XCALL_ACK_TIMEOUT_NS ((uint64_t) 6000000000)
+ uint64_t xcall_ack_timeout_abstime;
+ 
++#if defined(KEBAB)
++/* Captured in arm_init() after PE_init_platform(FALSE, args) has run
++ * SecureDTInit() (the first point at which /chosen can be read) and after the
++ * kernel page size has been selected (PAGE_SIZE is a runtime value here). Only
++ * a record the loader wrote into /chosen/darwinboot-memory-outside grants XNU
++ * ownership of RAM outside the primary bank; nothing here infers ownership
++ * from the EFI map. */
++static unsigned int kebab_boot_memory_status;
++static unsigned int kebab_boot_memory_skipped_count;
++static unsigned int kebab_boot_memory_truncated;
++static kebab_memory_skipped_record kebab_boot_memory_skipped[KBM_MAX_SLOTS];
++SECURITY_READ_ONLY_LATE(static kebab_memory_record) kebab_owned_memory[KBM_MAX_BANKS];
++SECURITY_READ_ONLY_LATE(static unsigned int) kebab_owned_memory_count;
++SECURITY_READ_ONLY_LATE(static unsigned long long) kebab_owned_memory_bytes;
++SECURITY_READ_ONLY_LATE(static unsigned long long) kebab_primary_base;
++SECURITY_READ_ONLY_LATE(static unsigned long long) kebab_primary_size;
++static unsigned long long kebab_admitted_bytes;
++static unsigned long long kebab_tested_bytes;
++
++static int
++kebab_owned_memory_overlaps(unsigned long long base, unsigned long long bytes)
++{
++	for (unsigned int i = 0; i < kebab_owned_memory_count; i++) {
++		const kebab_memory_record *d = &kebab_owned_memory[i];
++		if (base < d->physical + d->bytes && d->physical < base + bytes) {
++			return 1;
++		}
++	}
++	return 0;
++}
++
++static void
++kebab_skip_record(unsigned long long base, unsigned long long bytes, unsigned int reason)
++{
++	if (reason == KBM_SKIP_TOO_MANY) {
++		kebab_boot_memory_truncated++;
++	}
++	if (kebab_boot_memory_skipped_count < KBM_MAX_SLOTS) {
++		kebab_memory_skipped_record *s =
++		    &kebab_boot_memory_skipped[kebab_boot_memory_skipped_count++];
++		s->physical = base;
++		s->bytes = bytes;
++		s->reason = reason;
++	}
++}
++
++static void
++kebab_boot_memory_capture(const boot_args *args)
++{
++	DTEntry chosen = NULL;
++	unsigned int size = 0;
++	const void *prop = NULL;
++	const char *records;
++	unsigned int slots;
++	unsigned long long total = 0;
++
++	kebab_primary_base = args->physBase;
++	/* arm_vm_init() derives avail_end (and therefore vm_last_phys and the pmap
++	 * page-array size) from the page-truncated primary size, so containment
++	 * must use the same bound: the loader may report a byte count whose last
++	 * page is only partly owned by the primary window. */
++	kebab_primary_size = args->memSize & ~(unsigned long long)PAGE_MASK;
++
++	if (SecureDTLookupEntry(NULL, "/chosen", &chosen) != kSuccess) {
++		kebab_boot_memory_status = 1;
++		return;
++	}
++	if (SecureDTGetProperty(chosen, KBM_FDT_PROPERTY, &prop, &size) != kSuccess ||
++	    prop == NULL || size < KBM_RECORD_SIZE || (size % KBM_RECORD_SIZE) != 0) {
++		kebab_boot_memory_status = 2;
++		return;
++	}
++	slots = size / KBM_RECORD_SIZE;
++	if (slots > KBM_MAX_SLOTS) {
++		slots = KBM_MAX_SLOTS;
++	}
++	records = prop;
++	for (unsigned int i = 0; i < slots; i++) {
++		const char *slot = records + i * KBM_RECORD_SIZE;
++		unsigned long long base, bytes;
++		unsigned int reason = 0;
++
++		/* The loader writes little-endian records into a fixed, zero-filled
++		 * buffer, so a bounded memcpy both reads unaligned slots safely and
++		 * keeps the byte order explicit. */
++		__builtin_memcpy(&base, slot, sizeof(base));
++		__builtin_memcpy(&bytes, slot + sizeof(base), sizeof(bytes));
++		if (!base && !bytes) {
++			continue;               /* unused slot */
++		}
++		if (!bytes) {
++			reason = KBM_SKIP_EMPTY_SIZE;
++		} else if ((base & PAGE_MASK) || (bytes & PAGE_MASK)) {
++			reason = KBM_SKIP_MISALIGNED;
++		} else if (base > ~0ULL - bytes) {
++			reason = KBM_SKIP_OVERFLOW;
++		} else if (base + bytes > kebab_primary_base) {
++			/* 0366's design constraint: the bank has to sit entirely below
++			 * the primary kernel-managed window, so the pmap tables and the
++			 * physmap index math stay anchored at gPhysBase. */
++			reason = KBM_SKIP_ABOVE_PRIMARY;
++		} else if (kebab_owned_memory_count >= KBM_MAX_BANKS) {
++			reason = KBM_SKIP_TOO_MANY;
++		} else if (kebab_owned_memory_overlaps(base, bytes)) {
++			reason = KBM_SKIP_OVERLAP;
++		}
++		if (reason) {
++			kebab_skip_record(base, bytes, reason);
++			continue;
++		}
++		kebab_owned_memory[kebab_owned_memory_count].physical = base;
++		kebab_owned_memory[kebab_owned_memory_count].bytes = bytes;
++		kebab_owned_memory_count++;
++		total += bytes;
++	}
++	kebab_owned_memory_bytes = total;
++
++	kebab_boot_memory_status = 3;
++}
++#endif /* KEBAB */
++
+ boot_args const_boot_args __attribute__((section("__DATA, __const")));
+ boot_args      *BootArgs __attribute__((section("__DATA, __const")));
+ 
+@@ -338,6 +463,152 @@
+ #endif /* __arm64 */
+ }
+ 
++#if defined(KEBAB)
++unsigned long long kebab_extra_memory_bytes(void);
++unsigned long long kebab_memory_metadata_base(void);
++int kebab_memory_contains(unsigned long long, unsigned long long);
++int kebab_memory_intersects(unsigned long long, unsigned long long);
++int kebab_extra_memory_bank(unsigned int, unsigned long long *, unsigned long long *);
++void kebab_extra_memory_admit(void);
++
++unsigned long long
++kebab_extra_memory_bytes(void)
++{
++	return kebab_owned_memory_bytes;
++}
++
++/* Lowest PA covered by the pmap tables: the primary bank or a lower owned bank. */
++unsigned long long
++kebab_memory_metadata_base(void)
++{
++	unsigned long long first = kebab_primary_base;
++	for (unsigned int i = 0; i < kebab_owned_memory_count; i++) {
++		if (kebab_owned_memory[i].physical < first) {
++			first = kebab_owned_memory[i].physical;
++		}
++	}
++	return first;
++}
++
++int
++kebab_extra_memory_bank(unsigned int i, unsigned long long *pa, unsigned long long *n)
++{
++	if (i >= kebab_owned_memory_count) {
++		return 0;
++	}
++	*pa = kebab_owned_memory[i].physical;
++	*n = kebab_owned_memory[i].bytes;
++	return 1;
++}
++
++int
++kebab_memory_contains(unsigned long long pa, unsigned long long n)
++{
++	if (!n || pa > ~0ULL - n) {
++		return 0;
++	}
++	if (pa >= kebab_primary_base && pa - kebab_primary_base <= kebab_primary_size &&
++	    n <= kebab_primary_size - (pa - kebab_primary_base)) {
++		return 1;
++	}
++	for (unsigned int i = 0; i < kebab_owned_memory_count; i++) {
++		const kebab_memory_record *d = &kebab_owned_memory[i];
++		if (pa >= d->physical && pa - d->physical <= d->bytes && n <= d->bytes - (pa - d->physical)) {
++			return 1;
++		}
++	}
++	return 0;
++}
++
++int
++kebab_memory_intersects(unsigned long long pa, unsigned long long n)
++{
++	if (!n || pa > ~0ULL - n) {
++		return 0;
++	}
++	if (pa < kebab_primary_base + kebab_primary_size && kebab_primary_base < pa + n) {
++		return 1;
++	}
++	for (unsigned int i = 0; i < kebab_owned_memory_count; i++) {
++		const kebab_memory_record *d = &kebab_owned_memory[i];
++		if (pa < d->physical + d->bytes && d->physical < pa + n) {
++			return 1;
++		}
++	}
++	return 0;
++}
++
++/* Called from arm_vm_prot_finalize(), after pmap and the scheduler exist and
++ * before the VM page arrays are built. Explicit PFNs live outside vm_pages;
++ * its existing contiguous primary-bank layout remains unchanged. */
++void
++kebab_extra_memory_admit(void)
++{
++	if (kebab_admitted_bytes) {
++		panic("KEBAB XRAM: duplicate page admission");
++	}
++	for (unsigned int i = 0; i < kebab_owned_memory_count; i++) {
++		const kebab_memory_record *d = &kebab_owned_memory[i];
++		/* Destructive test only while every page is exclusively loader-owned.
++		 * Write every 64-bit word in every bank before verifying any bank, so
++		 * cross-bank address aliases cannot hide behind sequential admission. */
++		for (unsigned long long off = 0; off < d->bytes; off += PAGE_SIZE) {
++			volatile uint64_t *p = (volatile uint64_t *)phystokv(d->physical + off);
++			for (unsigned int j = 0; j < PAGE_SIZE / 8; j++) {
++				p[j] = (d->physical + off + j * 8) ^ 0x951af742608ed3bcULL;
++			}
++		}
++	}
++	__asm__ volatile("dsb sy" ::: "memory");
++	for (unsigned int i = 0; i < kebab_owned_memory_count; i++) {
++		const kebab_memory_record *d = &kebab_owned_memory[i];
++		for (unsigned long long off = 0; off < d->bytes; off += PAGE_SIZE) {
++			volatile uint64_t *p = (volatile uint64_t *)phystokv(d->physical + off);
++			if (ml_static_vtop((vm_offset_t)p) != d->physical + off) {
++				panic("KEBAB XRAM: page/address test failed at 0x%llx", d->physical + off);
++			}
++			for (unsigned int j = 0; j < PAGE_SIZE / 8; j++) {
++				uint64_t expected = (d->physical + off + j * 8) ^ 0x951af742608ed3bcULL;
++				if (p[j] != expected) {
++					panic("KEBAB XRAM: RAM test failed at 0x%llx", d->physical + off + j * 8);
++				}
++				p[j] = 0;
++			}
++		}
++		kebab_tested_bytes += d->bytes;
++	}
++	for (unsigned int i = 0; i < kebab_owned_memory_count; i++) {
++		const kebab_memory_record *d = &kebab_owned_memory[i];
++		vm_page_create((ppnum_t)(d->physical >> PAGE_SHIFT),
++		    (ppnum_t)((d->physical + d->bytes) >> PAGE_SHIFT));
++		kebab_admitted_bytes += d->bytes;
++	}
++	kprintf("KEBAB XRAM: admitted=%llu tested=%llu banks=%u free_pages=%u page_bytes=%u\n",
++	    kebab_admitted_bytes, kebab_tested_bytes, kebab_owned_memory_count,
++	    vm_page_free_count, (unsigned)PAGE_SIZE);
++}
++
++/* Normal-context diagnostic entry; no allocator or hardware side effects. */
++void
++kebab_boot_memory_dump(void)
++{
++	kprintf("KEBAB XRAM: source=fdt property=%s status=%u primary=0x%llx bytes=0x%llx owned=0x%llx admitted=%llu tested=%llu banks=%u skipped=%u truncated=%u metadata_base=0x%llx free_pages=%u\n",
++	    KBM_FDT_PROPERTY, kebab_boot_memory_status, kebab_primary_base,
++	    kebab_primary_size, kebab_owned_memory_bytes, kebab_admitted_bytes,
++	    kebab_tested_bytes, kebab_owned_memory_count, kebab_boot_memory_skipped_count,
++	    kebab_boot_memory_truncated, kebab_memory_metadata_base(), vm_page_free_count);
++	for (unsigned int i = 0; i < kebab_owned_memory_count; i++) {
++		kprintf("KEBAB XRAM bank=%u start=0x%llx bytes=0x%llx\n",
++		    i, kebab_owned_memory[i].physical, kebab_owned_memory[i].bytes);
++	}
++	for (unsigned int i = 0; i < kebab_boot_memory_skipped_count; i++) {
++		const kebab_memory_skipped_record *s = &kebab_boot_memory_skipped[i];
++		kprintf("KEBAB XRAM skip=%u start=0x%llx bytes=0x%llx reason=%u\n",
++		    i, s->physical, s->bytes, s->reason);
++	}
++}
++#endif /* KEBAB */
++
+ /*
+  *		Routine:		arm_init
+  *		Function:		Runs on the boot CPU, once, on entry from iBoot.
+@@ -448,6 +719,18 @@
+ 	}
+ #endif
+ 
++#if defined(KEBAB)
++	/*
++	 * KEBAB: /chosen only becomes readable once PE_init_platform(FALSE) has
++	 * called SecureDTInit(), and PAGE_SIZE/PAGE_MASK only become usable once
++	 * the block above has selected PAGE_SHIFT_CONST (a runtime variable in
++	 * this kernel). Capture the loader's outside-bank table here: after both,
++	 * and still well before arm_vm_init(), where pmap's vm_first_phys,
++	 * pa_valid(), the physmap apertures and kebab_extra_memory_admit() use it.
++	 */
++	kebab_boot_memory_capture(args);
++#endif
++
+ 	ml_parse_cpu_topology();
+ 
+ 
+@@ -573,6 +856,9 @@
+ 	boot_progress_stage("serial_init returned");
+ 	kernel_startup_initialize_upto(STARTUP_SUB_KPRINTF);
+ 	kprintf("kprintf initialized\n");
++#if defined(KEBAB)
++	kebab_boot_memory_dump();
++#endif
+ 	boot_progress_stage("kprintf initialized");
+ 
+ 	serialmode = 0;
+--- a/osfmk/arm/pmap/pmap.c
++++ b/osfmk/arm/pmap/pmap.c
+@@ -2298,7 +2298,13 @@
+ 
+ 	memset((char *)phystokv(pmap_struct_start), 0, avail_start - pmap_struct_start);
+ 
++#if defined(KEBAB)
++	/* PAI offset 0 is the lowest owned bank, so holes below the primary bank
++	 * keep their natural index instead of wrapping around gPhysBase. */
++	vm_first_phys = kebab_memory_metadata_base();
++#else
+ 	vm_first_phys = gPhysBase;
++#endif
+ 	vm_last_phys = trunc_page(avail_end);
+ 
+ 	queue_init(&map_pmap_list);
+@@ -7634,6 +7640,12 @@
+ boolean_t
+ pmap_has_managed_page(ppnum_t first, ppnum_t last)
+ {
++#if defined(KEBAB)
++	if (last < first) {
++		return FALSE;
++	}
++	return kebab_memory_intersects(ptoa(first), (uint64_t)(last - first + 1) * PAGE_SIZE);
++#endif
+ 	if (ptoa(first) >= vm_last_phys) {
+ 		return FALSE;
+ 	}
+--- a/osfmk/arm/pmap/pmap_data.c
++++ b/osfmk/arm/pmap/pmap_data.c
+@@ -631,7 +631,13 @@
+ 	vm_size_t ptd_root_table_size = num_ptd_pages * PAGE_SIZE;
+ 
+ 	/* Number of VM pages that span all of kernel-managed memory. */
++#if defined(KEBAB)
++	/* PAIs retain their normal arithmetic, including unowned holes. Only the
++	 * validity predicate admits owned pages; bootstrap never frees the holes. */
++	const unsigned int npages = (unsigned int)atop(avail_end - kebab_memory_metadata_base());
++#else
+ 	const unsigned int npages = (unsigned int)atop(mem_size);
++#endif
+ 
+ 	/* The pv_head_table and pp_attr_table both have one entry per VM page. */
+ 	const vm_size_t pp_attr_table_size = npages * sizeof(pp_attr_t);
+@@ -693,6 +699,12 @@
+ 	pt_desc_t *ptd_root_table = (pt_desc_t *)phystokv(avail_start);
+ 	avail_start = round_page(avail_start + ptd_root_table_size);
+ 
++#if defined(KEBAB)
++	/* The pmap tables still have to fit in the primary bank behind the kernel. */
++	if (avail_start > avail_end) {
++		panic("KEBAB XRAM: metadata exhausted primary bank");
++	}
++#endif
+ 	memset((char *)phystokv(pmap_struct_start), 0, avail_start - pmap_struct_start);
+ 
+ 	/* This function assumes that ptd_root_table has been zeroed out already. */
+--- a/osfmk/arm/pmap/pmap_data.h
++++ b/osfmk/arm/pmap/pmap_data.h
+@@ -62,6 +62,17 @@
+  */
+ extern pmap_paddr_t vm_first_phys, vm_last_phys;
+ 
++#if defined(KEBAB)
++/* Implemented in osfmk/arm/arm_init.c. <arm64/proc_reg.h> above already
++ * selected the board, which is what defines KEBAB for this translation unit. */
++extern unsigned long long kebab_extra_memory_bytes(void);
++extern unsigned long long kebab_memory_metadata_base(void);
++extern int kebab_memory_contains(unsigned long long, unsigned long long);
++extern int kebab_memory_intersects(unsigned long long, unsigned long long);
++extern int kebab_extra_memory_bank(unsigned int, unsigned long long *, unsigned long long *);
++extern void kebab_extra_memory_admit(void);
++#endif
++
+ /**
+  * Return whether the given address represents a kernel-managed physical page.
+  *
+@@ -74,7 +85,12 @@
+ static inline bool
+ pa_valid(pmap_paddr_t pa)
+ {
++#if defined(KEBAB)
++	/* Discontiguous owned banks: validity is ownership, not one linear range. */
++	return kebab_memory_contains(pa, 1) != 0;
++#else
+ 	return (pa >= vm_first_phys) && (pa < vm_last_phys);
++#endif
+ }
+ 
+ /**
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -42,6 +42,15 @@
+ #include <arm64/proc_reg.h>
+ #include <arm64/lowglobals.h>
+ #include <arm64/kebab_early.h>
++#if defined(KEBAB)
++#include <arm64/kebab_boot_memory.h>
++extern unsigned long long kebab_extra_memory_bytes(void);
++extern unsigned long long kebab_memory_metadata_base(void);
++extern int kebab_memory_contains(unsigned long long, unsigned long long);
++extern int kebab_memory_intersects(unsigned long long, unsigned long long);
++extern int kebab_extra_memory_bank(unsigned int, unsigned long long *, unsigned long long *);
++extern void kebab_extra_memory_admit(void);
++#endif
+ #include <arm/cpu_data_internal.h>
+ #include <arm/misc_protos.h>
+ #include <pexpert/arm64/boot.h>
+@@ -367,7 +376,12 @@
+ 	vm_size_t len;
+ } ptov_table_entry;
+ 
++#if defined(KEBAB)
++/* Primary physmap apertures plus one page-granular entry per owned bank. */
++#define PTOV_TABLE_SIZE 24
++#else
+ #define PTOV_TABLE_SIZE 8
++#endif
+ SECURITY_READ_ONLY_LATE(static ptov_table_entry)        ptov_table[PTOV_TABLE_SIZE];
+ SECURITY_READ_ONLY_LATE(static boolean_t)               kva_active = FALSE;
+ 
+@@ -1031,7 +1045,11 @@
+ 		if ((pa + len) > real_avail_end) {
+ 			_end -= (pa + len - real_avail_end);
+ 		}
++#if defined(KEBAB)
++		assert(kebab_memory_contains(start - gVirtBase + gPhysBase - pa_offset, PAGE_SIZE));
++#else
+ 		assert((start - gVirtBase + gPhysBase - pa_offset) >= gPhysBase);
++#endif
+ 
+ 		/* Round up to the nearest PAGE_SIZE boundary when creating mappings:
+ 		 * PAGE_SIZE may be a multiple of ARM_PGBYTES, and we don't want to leave
+@@ -1581,6 +1599,17 @@
+ 	arm_vm_physmap_slide(temp_ptov_table, (args->topOfKernelData - gPhysBase + gVirtBase),
+ 	    real_avail_end - args->topOfKernelData, AP_RWNA, 0);
+ 
++#if defined(KEBAB)
++	/* One page-granular aperture per loader-owned bank, appended to the
++	 * physmap window so phystokv() also covers PAs outside the primary span. */
++	for (unsigned int i = 0; i < KBM_MAX_BANKS; i++) {
++		unsigned long long pa, n;
++		if (!kebab_extra_memory_bank(i, &pa, &n)) {
++			break;
++		}
++		arm_vm_physmap_slide(temp_ptov_table, gVirtBase + (pa - gPhysBase), n, AP_RWNA, 0);
++	}
++#endif
+ 	assert((temp_ptov_table[ptov_index - 1].va + temp_ptov_table[ptov_index - 1].len) <= physmap_end);
+ 
+ 	// Sort in descending order of segment length.  LUT traversal is linear, so largest (most likely used)
+@@ -1608,6 +1637,17 @@
+ 	arm_vm_physmap_slide(temp_ptov_table, (args->topOfKernelData - gPhysBase + gVirtBase),
+ 	    real_avail_end - args->topOfKernelData, AP_RWNA, ARM64_GRANULE_ALLOW_BLOCK | ARM64_GRANULE_ALLOW_HINT); // rest of physmem
+ 
++#if defined(KEBAB)
++	/* One page-granular aperture per loader-owned bank, appended to the
++	 * physmap window so phystokv() also covers PAs outside the primary span. */
++	for (unsigned int i = 0; i < KBM_MAX_BANKS; i++) {
++		unsigned long long pa, n;
++		if (!kebab_extra_memory_bank(i, &pa, &n)) {
++			break;
++		}
++		arm_vm_physmap_slide(temp_ptov_table, gVirtBase + (pa - gPhysBase), n, AP_RWNA, 0);
++	}
++#endif
+ 	assert((temp_ptov_table[ptov_index - 1].va + temp_ptov_table[ptov_index - 1].len) <= physmap_end);
+ 
+ 	// Sort in descending order of segment length.  LUT traversal is linear, so largest (most likely used)
+@@ -1653,6 +1693,11 @@
+ 	arm_vm_page_granular_RNX(segPRELINKTEXTB, segSizePRELINKTEXT, ARM64_GRANULE_ALLOW_BLOCK);
+ 	arm_vm_page_granular_RNX(segPLKDATACONSTB, segSizePLKDATACONST, ARM64_GRANULE_ALLOW_BLOCK);
+ 
++#if defined(KEBAB)
++	/* Admit the loader-owned banks once the pmap can map them and before the
++	 * VM page arrays are built. */
++	kebab_extra_memory_admit();
++#endif
+ 	cpu_stack_alloc(&BootCpuData);
+ 	arm64_replace_bootstack(&BootCpuData);
+ 	ml_static_mfree(phystokv(segBOOTDATAB - gVirtBase + gPhysBase), segSizeBOOTDATA);
+@@ -1916,8 +1961,13 @@
+ 	}
+ #endif
+ 
++	/* Extra banks have separate page-granular apertures, not a larger linear PA window. */
++	unsigned long long kebab_physmap_extra = 0;
++#if defined(KEBAB)
++	kebab_physmap_extra = kebab_extra_memory_bytes();
++#endif
+ #if defined(ARM_LARGE_MEMORY)
+-	unsigned long physmap_l1_entries = ((real_phys_size + ARM64_PHYSMAP_SLIDE_RANGE) >> ARM_TT_L1_SHIFT) + 1;
++	unsigned long physmap_l1_entries = ((real_phys_size + kebab_physmap_extra + ARM64_PHYSMAP_SLIDE_RANGE) >> ARM_TT_L1_SHIFT) + 1;
+ 	physmap_base = VM_MIN_KERNEL_ADDRESS - (physmap_l1_entries << ARM_TT_L1_SHIFT);
+ #else
+ 	physmap_base = phystokv(args->topOfKernelData);
+@@ -1934,17 +1984,20 @@
+ #if defined(ARM_LARGE_MEMORY)
+ 	static_memory_end = phystokv(args->topOfKernelData);
+ #else
+-	static_memory_end = physmap_base + mem_size;
++	static_memory_end = physmap_base + mem_size + kebab_physmap_extra;
+ #endif // ARM_LARGE_MEMORY
+-	physmap_end = physmap_base + real_phys_size;
++	physmap_end = physmap_base + real_phys_size + kebab_physmap_extra;
+ #else
+ #if defined(ARM_LARGE_MEMORY)
+ 	/* For large memory systems with no PPL such as virtual machines */
+ 	static_memory_end = phystokv(args->topOfKernelData);
+-	physmap_end = physmap_base + real_phys_size;
++	physmap_end = physmap_base + real_phys_size + kebab_physmap_extra;
+ #else
+-	static_memory_end = physmap_base + mem_size + (PTOV_TABLE_SIZE * ARM_TT_TWIG_SIZE); // worst possible case for block alignment
+-	physmap_end = physmap_base + real_phys_size + (PTOV_TABLE_SIZE * ARM_TT_TWIG_SIZE);
++	/* The owned-bank apertures are appended inside the physmap window, so the
++	 * dynamic kernel VA range has to start after them (4 KiB twigs make the
++	 * PTOV padding too small to absorb a whole bank). */
++	static_memory_end = physmap_base + mem_size + kebab_physmap_extra + (PTOV_TABLE_SIZE * ARM_TT_TWIG_SIZE);
++	physmap_end = physmap_base + real_phys_size + kebab_physmap_extra + (PTOV_TABLE_SIZE * ARM_TT_TWIG_SIZE);
+ #endif // ARM_LARGE_MEMORY
+ #endif
+ 
+@@ -2270,6 +2323,11 @@
+ 		flush_mmu_tlb();
+ 	}
+ 
++#if defined(KEBAB)
++	/* avail_end/gPhysSize remain the primary aperture; accounting is the sum
++	 * of explicitly owned pages. pmap metadata separately spans PA indices. */
++	mem_size += kebab_extra_memory_bytes();
++#endif
+ 	sane_size = mem_size - (avail_start - gPhysBase);
+ 	max_mem = mem_size;
+ 	vm_kernel_slid_base = segLOWESTTEXT;
+--- /dev/null
++++ b/osfmk/arm64/kebab_boot_memory.h
+@@ -0,0 +1,91 @@
++/* SPDX-License-Identifier: BSD-2-Clause */
++#ifndef KEBAB_BOOT_MEMORY_H
++#define KEBAB_BOOT_MEMORY_H
++
++#include <mach/vm_param.h>      /* PAGE_SIZE/PAGE_MASK: this kernel runs 4 KiB pages */
++
++/* The loader publishes the RAM it owns outside the primary kernel-managed bank
++ * as a device-tree property under /chosen. DarwinBoot pre-creates the property
++ * zero-filled (16 * slots bytes, 1..64 slots) and fills one record per range,
++ * little endian:
++ *
++ *	<u64 base><u64 size>		(KBM_RECORD_SIZE bytes)
++ *
++ * The loader fills slots from the front; an all-zero record is an unused slot.
++ * XNU reads the property once in arm_init(), after PE_init_platform(FALSE,
++ * args) has run SecureDTInit() and after the kernel page size has been
++ * selected, and adopts at most KBM_MAX_BANKS ranges because the physmap
++ * aperture table is sized for that. Nothing here infers ownership from the EFI
++ * memory map: only a record the loader actually wrote grants XNU ownership of
++ * a range.
++ *
++ * /chosen/darwinboot-memory-outside-kept is a parallel <u64 base><u64 size>
++ * array naming ranges the firmware calls free but that the kernel must leave
++ * alone (memory a board driver uses at a fixed address). This kernel does not
++ * read it: the loader must simply not put those ranges in the outside table,
++ * and because only listed ranges are ever touched, they stay reserved.
++ */
++#define KBM_FDT_PROPERTY "darwinboot-memory-outside"
++#define KBM_FDT_KEPT_PROPERTY "darwinboot-memory-outside-kept"
++#define KBM_MAX_BANKS 16
++#define KBM_MAX_SLOTS 64
++#define KBM_RECORD_SIZE 16
++
++typedef struct {
++	unsigned long long physical;
++	unsigned long long bytes;
++} kebab_memory_record;
++typedef char kbm_record_size[(sizeof(kebab_memory_record) == KBM_RECORD_SIZE) ? 1 : -1];
++
++/* Why one loader record was not adopted; kept for the early kprintf dump. */
++typedef struct {
++	unsigned long long physical;
++	unsigned long long bytes;
++	unsigned int reason;
++} kebab_memory_skipped_record;
++
++enum {
++	KBM_SKIP_EMPTY_SIZE = 1,        /* size == 0 with a nonzero base */
++	KBM_SKIP_MISALIGNED,            /* not whole PAGE_SIZE pages */
++	KBM_SKIP_OVERFLOW,              /* base + size wraps around */
++	KBM_SKIP_ABOVE_PRIMARY,         /* not entirely below gPhysBase */
++	KBM_SKIP_OVERLAP,               /* overlaps an already adopted bank */
++	KBM_SKIP_TOO_MANY,              /* more than KBM_MAX_BANKS usable records */
++};
++
++/* xram is an explicit development ladder, in MiB. 4096 means all eligible
++ * lower conventional ranges, capped at 4 GiB, not a promise of 4 GiB available. */
++static inline int
++kebab_extra_request(const char *line, unsigned long long *bytes)
++{
++	unsigned int seen = 0;
++	*bytes = 0;
++	while (*line) {
++		while (*line == ' ') {
++			line++;
++		}
++		const char *p = line;
++		while (*line && *line != ' ') {
++			line++;
++		}
++		if (line - p < 5 || p[0] != 'x' || p[1] != 'r' || p[2] != 'a' || p[3] != 'm' || p[4] != '=') {
++			continue;
++		}
++		unsigned long long n = 0;
++		if (seen++ || line - p == 5) {
++			return 0;
++		}
++		for (p += 5; p < line; p++) {
++			if (*p < '0' || *p > '9' || n > 4096) {
++				return 0;
++			}
++			n = n * 10 + (*p - '0');
++		}
++		if (n > 4096 || n % 16) {
++			return 0;
++		}
++		*bytes = n * 0x100000ULL;
++	}
++	return 1;
++}
++#endif
