@@ -1,0 +1,17 @@
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -483,6 +483,14 @@
+ 		return vaddr;
+ 	} else {
+ 		vaddr = phystokv(avail_start);
++		/* KEBAB bring-up probe: the CPU windows walk stops between marks 60 and 61,
++		 * i.e. inside the first alloc_ptpage(). Print the cursors and the mapping
++		 * they produce, so one boot says whether avail_start is outside the window. */
++		kebab_early_mark(81, "alloc_ptpage: avail_start, avail_end");
++		kebab_early_hex((uint64_t)avail_start);
++		kebab_early_hex((uint64_t)avail_end);
++		kebab_early_mark(82, "alloc_ptpage: vaddr");
++		kebab_early_hex((uint64_t)vaddr);
+ 		avail_start += ARM_PGBYTES;
+ 
+ 		return vaddr;

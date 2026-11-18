@@ -1,0 +1,13 @@
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -834,8 +834,10 @@
+ 	 * arm_vm_init() (it stops the boot there). Convert it now, while
+ 	 * PE_create_console later still reads PE_state.video.
+ 	 */
++	kebab_early_mark(29, "arm_init: ml_static_ptovirt(video) next");
+ 	PE_state.video.v_baseAddr = (unsigned long)ml_static_ptovirt(
+ 		(vm_offset_t)(PE_state.video.v_baseAddr & ~3UL));
++	kebab_early_mark(87, "arm_init: ml_static_ptovirt(video) done");
+ 	kebab_early_mark(28, "arm_vm_init returned; video base converted");
+ 
+ 	/* KEBAB: map the ramoops zone before the console exists, so a stall inside

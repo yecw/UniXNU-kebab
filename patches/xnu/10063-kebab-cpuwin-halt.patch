@@ -1,0 +1,11 @@
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -2545,6 +2545,8 @@
+ 		va_l1 = va_l2_end;
+ 		cpu_l1_tte++;
+ 		kebab_early_mark(76, "cpuwin: outer iteration done");
++		kebab_early_mark(77, "cpuwin: halting here for the photo");
++		for (;;) { __asm__ volatile("wfe"); }
+ 	}
+ 
+ 

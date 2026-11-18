@@ -1,0 +1,18 @@
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -2536,6 +2536,7 @@
+ 			kebab_early_mark(68, "cpuwin: after pmap_init_pte_page");
+ 
+ 			*cpu_l2_tte = (pa_to_tte(ptp_phys)) | ARM_TTE_TYPE_TABLE | ARM_TTE_VALID | ARM_DYNAMIC_TABLE_XN;
++			kebab_early_mark(69, "cpuwin: l2 tte written");
+ 
+ 			va_l2 += ARM_TT_L2_SIZE;
+ 			cpu_l2_tte++;
+@@ -2543,6 +2544,7 @@
+ 
+ 		va_l1 = va_l2_end;
+ 		cpu_l1_tte++;
++		kebab_early_mark(76, "cpuwin: outer iteration done");
+ 	}
+ 
+ 

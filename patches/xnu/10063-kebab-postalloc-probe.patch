@@ -1,0 +1,14 @@
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -2529,8 +2529,11 @@
+ 			}
+ 			ptp_phys = (pmap_paddr_t)kvtophys((vm_offset_t)ptp);
+ 
++			kebab_early_mark(66, "cpuwin: before bzero");
+ 			bzero(ptp, ARM_PGBYTES);
++			kebab_early_mark(67, "cpuwin: after bzero");
+ 			pmap_init_pte_page(kernel_pmap, ptp, va_l2, 3, TRUE);
++			kebab_early_mark(68, "cpuwin: after pmap_init_pte_page");
+ 
+ 			*cpu_l2_tte = (pa_to_tte(ptp_phys)) | ARM_TTE_TYPE_TABLE | ARM_TTE_VALID | ARM_DYNAMIC_TABLE_XN;
+ 

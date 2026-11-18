@@ -1,0 +1,27 @@
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -2058,6 +2058,24 @@
+ 	 */
+ 	first_avail_phys = avail_start = args->topOfKernelData;
+ 
++	/*
++	 * KEBAB: the loader hands over a topOfKernelData that is not inside the
++	 * physmap window (measured 0x0C555000 while physBase is 0xC0000000).
++	 * alloc_ptpage() maps it with phystokv(), which wraps below the window, and
++	 * the first bzero() faults in the CPU windows walk. Move the cursor to the
++	 * first page after the kernel image instead.
++	 */
++	if (((uint64_t)avail_start < (uint64_t)gPhysBase) ||
++	    ((uint64_t)avail_start >= (uint64_t)gPhysBase + (uint64_t)args->memSize)) {
++		uint64_t kebab_repaired = ((uint64_t)args->physBase + 0x4000000ULL + (ARM_PGBYTES - 1)) & ~((uint64_t)ARM_PGBYTES - 1);
++		kebab_early_mark(83, "avail_start outside window, repaired");
++		kebab_early_hex((uint64_t)avail_start);
++		kebab_early_hex(kebab_repaired);
++		avail_start = (pmap_paddr_t)kebab_repaired;
++		args->topOfKernelData = kebab_repaired;
++		first_avail_phys = avail_start;
++	}
++
+ #if defined(KERNEL_INTEGRITY_KTRR) || defined(KERNEL_INTEGRITY_CTRR)
+ 	arm_replace_identity_map();
+ #endif

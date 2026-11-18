@@ -1,0 +1,46 @@
+--- a/osfmk/arm64/kebab_early.c
++++ b/osfmk/arm64/kebab_early.c
+@@ -56,6 +56,30 @@
+ 	kebab_early_clean(early_row);
+ }
+ 
++/*
++ * Scroll the text area up by one row and leave the bottom row empty. Without
++ * this the console wraps back to the top and overwrites the oldest lines, so
++ * the screen no longer shows where execution stopped.
++ */
++static void
++kebab_early_scroll(void)
++{
++	uint32_t *base = (uint32_t *)early_fb;
++	uintptr_t dst = (uintptr_t)(base + ((EARLY_TOP_ROW) * EARLY_CELL_H) * EARLY_STRIDE);
++	uintptr_t src = (uintptr_t)(base + ((EARLY_TOP_ROW + 1) * EARLY_CELL_H) * EARLY_STRIDE);
++	uintptr_t bytes = (uintptr_t)(EARLY_ROWS - EARLY_TOP_ROW - 1) * EARLY_CELL_H * EARLY_STRIDE * sizeof(uint32_t);
++	uintptr_t start = dst & ~(uintptr_t)63u;
++	uintptr_t end = (dst + bytes) & ~(uintptr_t)63u;
++
++	for (uintptr_t i = 0; i < bytes; i += sizeof(uint32_t)) {
++		*(uint32_t *)(dst + i) = *(uint32_t *)(src + i);
++	}
++	for (uintptr_t a = start; a < end; a += 64u) {
++		__asm__ volatile("dc civac, %0" :: "r"(a) : "memory");
++	}
++	__asm__ volatile("dsb sy" ::: "memory");
++}
++
+ void
+ kebab_early_putc(char c)
+ {
+@@ -72,7 +96,11 @@
+ 	}
+ 	if (c == '\n' || early_col == EARLY_COLS) {
+ 		early_col = 0;
+-		early_row = EARLY_TOP_ROW + (early_row - EARLY_TOP_ROW + 1) % (EARLY_ROWS - EARLY_TOP_ROW);
++		if (early_row + 1 >= EARLY_ROWS) {
++			kebab_early_scroll();
++		} else {
++			early_row++;
++		}
+ 		kebab_early_clear_row();
+ 		if (c == '\n') {
+ 			return;

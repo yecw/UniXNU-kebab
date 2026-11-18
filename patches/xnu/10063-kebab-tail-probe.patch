@@ -1,0 +1,20 @@
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -2553,13 +2553,17 @@
+ 	 * starts on a PAGE_SIZE aligned boundary.
+ 	 */
+ 	avail_start = (avail_start + PAGE_MASK) & ~PAGE_MASK;
++	kebab_early_mark(78, "tail: avail aligned");
+ 
+ #if XNU_MONITOR
+ 	pmap_static_allocations_done();
+ #endif
+ 	first_avail = avail_start;
++	kebab_early_mark(79, "tail: first_avail set");
+ 	patch_low_glo_static_region(args->topOfKernelData, avail_start - args->topOfKernelData);
++	kebab_early_mark(80, "tail: patch_low_glo_static_region done");
+ 	enable_preemption();
++	kebab_early_mark(84, "tail: arm_vm_init returning");
+ }
+ 
+ /*

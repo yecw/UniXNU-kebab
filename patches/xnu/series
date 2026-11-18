@@ -57,6 +57,15 @@ pending/adapt-0366-fdt.patch
 pending/adapt-0367-after-0366.patch
 # Temporary: the outside-bank capture result on the early console.
 10063-kebab-xram-marks.patch
-# Temporary: arm_vm_init entry arguments and the CPU-windows L3 loop steps
-# (marks 63-69/71-74) so one boot distinguishes the three candidate stalls.
-10063-kebab-vm62-probe.patch
+# Temporary: what alloc_ptpage(FALSE) actually returns for the CPU windows walk.
+10063-kebab-allocpt-probe.patch
+# Repair topOfKernelData when it lands outside the physmap window (measured
+# 0x0C555000 with physBase 0xC0000000), which faults the CPU windows walk.
+10063-kebab-avail-repair.patch
+# Temporary: which of bzero/pmap_init_pte_page in the CPU windows walk faults.
+10063-kebab-postalloc-probe.patch
+10063-kebab-l2write-probe.patch
+# Scroll the early framebuffer console instead of wrapping over the oldest lines.
+10063-kebab-early-scroll.patch
+10063-kebab-tail-probe.patch
+10063-kebab-videobase-probe.patch
