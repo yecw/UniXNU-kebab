@@ -57,3 +57,6 @@ pending/adapt-0366-fdt.patch
 pending/adapt-0367-after-0366.patch
 # Temporary: the outside-bank capture result on the early console.
 10063-kebab-xram-marks.patch
+# Temporary: arm_vm_init entry arguments and the CPU-windows L3 loop steps
+# (marks 63-69/71-74) so one boot distinguishes the three candidate stalls.
+10063-kebab-vm62-probe.patch

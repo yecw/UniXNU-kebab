@@ -1,0 +1,108 @@
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -827,6 +827,8 @@
+ 	boot_progress_stage("arm_vm_init enter");
+ 	kebab_early_mark(3, "about to call arm_vm_init");
+ 	arm_vm_init(xmaxmem, args);
++
++	kebab_early_mark(29, "back in arm_init; ml_static_ptovirt(video base) next");
+ 
+ 	/*
+ 	 * KEBAB: PE_init_platform(FALSE) recorded the frame buffer before the
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -1916,6 +1916,13 @@
+ arm_vm_init(uint64_t memory_size, boot_args * args)
+ {
+ 	kebab_early_mark(20, "arm_vm_init entered");
++	kebab_early_mark(71, "args: topOfKernelData");
++	kebab_early_hex((uint64_t)args->topOfKernelData);
++	kebab_early_mark(72, "args: physBase");
++	kebab_early_hex((uint64_t)args->physBase);
++	kebab_early_mark(73, "args: memSize, memSizeActual");
++	kebab_early_hex((uint64_t)args->memSize);
++	kebab_early_hex((uint64_t)args->memSizeActual);
+ 	vm_map_address_t va_l1, va_l1_end;
+ 	tt_entry_t       *cpu_l1_tte;
+ 	vm_map_address_t va_l2, va_l2_end;
+@@ -2000,6 +2007,12 @@
+ 	physmap_end = physmap_base + real_phys_size + kebab_physmap_extra + (PTOV_TABLE_SIZE * ARM_TT_TWIG_SIZE);
+ #endif // ARM_LARGE_MEMORY
+ #endif
++
++	kebab_early_mark(74, "physmap: base, end, extra, real_phys_size");
++	kebab_early_hex((uint64_t)physmap_base);
++	kebab_early_hex((uint64_t)physmap_end);
++	kebab_early_hex((uint64_t)kebab_physmap_extra);
++	kebab_early_hex((uint64_t)real_phys_size);
+ 
+ #if KASAN && !defined(ARM_LARGE_MEMORY)
+ 	/* add the KASAN stolen memory to the physmap */
+@@ -2493,20 +2506,49 @@
+ 		while (va_l2 < va_l2_end) {
+ 			pt_entry_t *    ptp;
+ 			pmap_paddr_t    ptp_phys;
++			static unsigned int kebab_l3_count2;
++			const boolean_t kebab_probe = ((kebab_l3_count2++ & 31) == 0);
+ 
++			if (kebab_probe) {
++				kebab_early_mark(64, "cpuwin: l1 tte, l2 tte ptr, slot, va_l2");
++				kebab_early_hex((uint64_t)(*cpu_l1_tte));
++				kebab_early_hex((uint64_t)cpu_l2_tte);
++				kebab_early_hex((uint64_t)((va_l2 & ARM_TT_L2_INDEX_MASK) >> ARM_TT_L2_SHIFT));
++				kebab_early_hex((uint64_t)va_l2);
++			}
++
+ 			/* Allocate a page and setup L3 Table TTE in L2 */
+ 			ptp = (pt_entry_t *) alloc_ptpage(FALSE);
+-			static unsigned int kebab_l3_count2;
+-			if ((kebab_l3_count2++ & 31) == 0) {
++			if (kebab_probe) {
+ 				kebab_early_mark(61, "cpu windows L3, alloc_ptpage returned");
+ 				kebab_early_hex((uint64_t)ptp);
++				kebab_early_mark(65, "cpuwin: ptp pa, avail_start/end, va_l1/end");
++				kebab_early_hex((uint64_t)kvtophys((vm_offset_t)ptp));
++				kebab_early_hex((uint64_t)avail_start);
++				kebab_early_hex((uint64_t)avail_end);
++				kebab_early_hex((uint64_t)va_l1);
++				kebab_early_hex((uint64_t)va_l1_end);
+ 			}
+ 			ptp_phys = (pmap_paddr_t)kvtophys((vm_offset_t)ptp);
+ 
++			if (kebab_probe) {
++				kebab_early_mark(66, "cpuwin: before bzero");
++			}
+ 			bzero(ptp, ARM_PGBYTES);
++			if (kebab_probe) {
++				kebab_early_mark(67, "cpuwin: after bzero; pmap_init_pte_page next");
++			}
+ 			pmap_init_pte_page(kernel_pmap, ptp, va_l2, 3, TRUE);
++			if (kebab_probe) {
++				kebab_early_mark(68, "cpuwin: after pmap_init_pte_page; l2 write next");
++			}
+ 
+ 			*cpu_l2_tte = (pa_to_tte(ptp_phys)) | ARM_TTE_TYPE_TABLE | ARM_TTE_VALID | ARM_DYNAMIC_TABLE_XN;
++			if (kebab_probe) {
++				kebab_early_mark(69, "cpuwin: l2 tte written");
++				kebab_early_hex((uint64_t)(*cpu_l2_tte));
++				kebab_early_hex((uint64_t)cpu_l2_tte);
++			}
+ 
+ 			va_l2 += ARM_TT_L2_SIZE;
+ 			cpu_l2_tte++;
+@@ -2516,6 +2558,7 @@
+ 		cpu_l1_tte++;
+ 	}
+ 
++	kebab_early_mark(45, "cpu windows loop finished");
+ 
+ 	/*
+ 	 * Adjust avail_start so that the range that the VM owns
+@@ -2528,6 +2571,7 @@
+ #endif
+ 	first_avail = avail_start;
+ 	patch_low_glo_static_region(args->topOfKernelData, avail_start - args->topOfKernelData);
++	kebab_early_mark(46, "arm_vm_init tail done; returning to arm_init");
+ 	enable_preemption();
+ }
+ 
