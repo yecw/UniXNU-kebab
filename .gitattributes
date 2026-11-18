@@ -1,1 +1,4 @@
 * text=auto eol=lf
+
+# The firmware patch carries CRLF context from Sec.c; keep its bytes.
+docs/patches/mu-silicium-kebab-firmware-fixes.patch -text

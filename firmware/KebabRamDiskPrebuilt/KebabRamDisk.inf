@@ -1,0 +1,20 @@
+## @file
+#  KebabRamDisk as the 2026-11-15 firmware shipped it: it installs the BlockIo
+#  device for the payload itself. The source tree's rewrite publishes the payload
+#  through RamDiskDxe instead, and every rebuilt image using it answers
+#  "Failed to Find an OS" at BDS. Keep the known-good PE until the sources are
+#  reconciled.
+##
+[Defines]
+  INF_VERSION    = 0x00010005
+  BASE_NAME      = KebabRamDisk
+  FILE_GUID      = 3C4D5E6F-7A8B-49C1-9D2E-0F1A2B3C4D5E
+  MODULE_TYPE    = DXE_DRIVER
+  VERSION_STRING = 1.0
+  ENTRY_POINT    = KebabRamDiskEntry
+
+[Packages]
+  MdePkg/MdePkg.dec
+
+[Binaries.AARCH64]
+  PE32|KebabRamDisk.efi|*

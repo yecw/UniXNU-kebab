@@ -1,0 +1,461 @@
+diff --git a/BootShim/BootShim.S b/BootShim/BootShim.S
+index 4d20855..3bc899a 100644
+--- a/BootShim/BootShim.S
++++ b/BootShim/BootShim.S
+@@ -7,7 +7,7 @@ _StackBase:
+   .quad FD_BASE         /* Text Offset */
+ 
+ _StackSize:
+-  .quad FD_SIZE         /* Image Size */
++  .quad FD_SIZE + (_Payload - _Head)   /* Image Size: shim + firmware volume */
+   .quad 0               /* Flags */
+   .quad 0               /* Reserved */
+   .quad 0               /* Reserved */
+diff --git a/Platforms/OnePlus/kebabPkg/Include/APRIORI.inc b/Platforms/OnePlus/kebabPkg/Include/APRIORI.inc
+index d40cf53..bd52171 100644
+--- a/Platforms/OnePlus/kebabPkg/Include/APRIORI.inc
++++ b/Platforms/OnePlus/kebabPkg/Include/APRIORI.inc
+@@ -80,7 +80,7 @@ APRIORI DXE {
+   # INF Binaries/kebab/QcomPkg/Drivers/UsbPwrCtrlDxe/UsbPwrCtrlDxe.inf
+   INF Binaries/kebab/QcomPkg/Drivers/QcomChargerDxe/QcomChargerDxeLA.inf
+   INF Binaries/kebab/QcomPkg/Drivers/ChargerExDxe/ChargerExDxe.inf
+-  INF Binaries/kebab/QcomPkg/Drivers/UsbfnDwc3Dxe/UsbfnDwc3Dxe.inf   # device-mode console: DWC3 device role
++  # INF Binaries/kebab/QcomPkg/Drivers/UsbfnDwc3Dxe/UsbfnDwc3Dxe.inf   # device-mode console: DWC3 device role
+   # Xhci stays off for the first device-only test (host role could steal the core).
+   # INF Binaries/kebab/QcomPkg/Drivers/XhciPciEmulationDxe/XhciPciEmulationDxe.inf
+   # INF Binaries/kebab/QcomPkg/Drivers/XhciDxe/XhciDxe.inf
+@@ -91,12 +91,12 @@ APRIORI DXE {
+ 
+   # UsbMsdDxe is mass-storage function; not needed for the CDC-ACM log path.
+   # INF Binaries/kebab/QcomPkg/Drivers/UsbMsdDxe/UsbMsdDxe.inf
+-  INF Binaries/kebab/QcomPkg/Drivers/UsbDeviceDxe/UsbDeviceDxe.inf   # device-mode console: USB device protocol
+-  INF Binaries/kebab/QcomPkg/Drivers/UsbConfigDxe/UsbConfigDxe.inf   # device-mode console: USB config
++  # INF Binaries/kebab/QcomPkg/Drivers/UsbDeviceDxe/UsbDeviceDxe.inf   # device-mode console: USB device protocol
++  # INF Binaries/kebab/QcomPkg/Drivers/UsbConfigDxe/UsbConfigDxe.inf   # device-mode console: USB config
+   # GFander patch 0001: UsbInitDxe must be dispatched here, after UsbConfigDxe.
+   # Without this line the APRIORI list has no UsbInitDxe at all, and the
+   # device instance/StartController may not run before BDS/DarwinBoot.
+-  INF Binaries/kebab/QcomPkg/Drivers/UsbInitDxe/UsbInitDxe.inf   # device-mode console: create device instance
++  # INF Binaries/kebab/QcomPkg/Drivers/UsbInitDxe/UsbInitDxe.inf   # device-mode console: create device instance
+   INF Binaries/kebab/QcomPkg/Drivers/ButtonsDxe/ButtonsDxe.inf
+   INF Binaries/kebab/QcomPkg/Drivers/TsensDxe/TsensDxe.inf
+   INF Binaries/kebab/QcomPkg/Drivers/LimitsDxe/LimitsDxe.inf
+diff --git a/Platforms/OnePlus/kebabPkg/Include/DXE.inc b/Platforms/OnePlus/kebabPkg/Include/DXE.inc
+index ef63918..11afcfc 100644
+--- a/Platforms/OnePlus/kebabPkg/Include/DXE.inc
++++ b/Platforms/OnePlus/kebabPkg/Include/DXE.inc
+@@ -78,7 +78,7 @@
+   INF Binaries/kebab/QcomPkg/Drivers/TsensDxe/TsensDxe.inf
+   INF Binaries/kebab/QcomPkg/Drivers/LimitsDxe/LimitsDxe.inf
+   INF Binaries/kebab/QcomPkg/Drivers/DDRInfoDxe/DDRInfoDxe.inf
+-  INF Binaries/kebab/QcomPkg/Drivers/UsbfnDwc3Dxe/UsbfnDwc3Dxe.inf   # device-mode console: DWC3 device role
++  # INF Binaries/kebab/QcomPkg/Drivers/UsbfnDwc3Dxe/UsbfnDwc3Dxe.inf   # device-mode console: DWC3 device role
+   # XhciPciEmulationDxe/XhciDxe stay off for the first device-only test: they
+   # can bind the same controller as a host and switch it away from device mode.
+   # INF Binaries/kebab/QcomPkg/Drivers/XhciPciEmulationDxe/XhciPciEmulationDxe.inf
+@@ -90,9 +90,9 @@
+ 
+   # UsbMsdDxe is mass-storage function; not needed for the CDC-ACM log path.
+   # INF Binaries/kebab/QcomPkg/Drivers/UsbMsdDxe/UsbMsdDxe.inf
+-  INF Binaries/kebab/QcomPkg/Drivers/UsbDeviceDxe/UsbDeviceDxe.inf   # device-mode console: USB device protocol
+-  INF Binaries/kebab/QcomPkg/Drivers/UsbConfigDxe/UsbConfigDxe.inf   # device-mode console: USB config
+-  INF Binaries/kebab/QcomPkg/Drivers/UsbInitDxe/UsbInitDxe.inf   # device-mode console: create device instance
++  # INF Binaries/kebab/QcomPkg/Drivers/UsbDeviceDxe/UsbDeviceDxe.inf   # device-mode console: USB device protocol
++  # INF Binaries/kebab/QcomPkg/Drivers/UsbConfigDxe/UsbConfigDxe.inf   # device-mode console: USB config
++  # INF Binaries/kebab/QcomPkg/Drivers/UsbInitDxe/UsbInitDxe.inf   # device-mode console: create device instance
+   INF Binaries/kebab/QcomPkg/Drivers/HashDxe/HashDxe.inf
+   INF Binaries/kebab/QcomPkg/Drivers/CipherDxe/CipherDxe.inf
+   INF Binaries/kebab/QcomPkg/Drivers/MacDxe/MacDxe.inf
+diff --git a/Platforms/OnePlus/kebabPkg/Library/ConfigurationMapLib/ConfigurationMapLib.c b/Platforms/OnePlus/kebabPkg/Library/ConfigurationMapLib/ConfigurationMapLib.c
+index 904ee6e..3ae28da 100644
+--- a/Platforms/OnePlus/kebabPkg/Library/ConfigurationMapLib/ConfigurationMapLib.c
++++ b/Platforms/OnePlus/kebabPkg/Library/ConfigurationMapLib/ConfigurationMapLib.c
+@@ -23,7 +23,7 @@ gConfigurationDescriptor[] = {
+   {"Sdc1GpioConfigOff", 0xA00},
+   {"Sdc2GpioConfigOff", 0xA00},
+   {"EnableSDHCSwitch", 0x1},
+-  {"EnableUfsIOC", 0},
++  {"EnableUfsIOC", 1},
+   {"UfsSmmuConfigForOtherBootDev", 1},
+   {"SecurityFlag", 0xC4},
+   {"EnableLogFsSyncInRetail", 0x0},
+diff --git a/Platforms/OnePlus/kebabPkg/Library/MemoryMapLib/MemoryMapLib.c b/Platforms/OnePlus/kebabPkg/Library/MemoryMapLib/MemoryMapLib.c
+index 1e6d666..2959280 100644
+--- a/Platforms/OnePlus/kebabPkg/Library/MemoryMapLib/MemoryMapLib.c
++++ b/Platforms/OnePlus/kebabPkg/Library/MemoryMapLib/MemoryMapLib.c
+@@ -24,7 +24,13 @@ gMemoryDescriptor[] = {
+   {"Log Buffer",       0x9FFF7000, 0x00008000, AddMem, SYS_MEM, SYS_MEM_CAP, RtData, WRITE_BACK_XN},
+   {"Info Blk",         0x9FFFF000, 0x00001000, AddMem, SYS_MEM, SYS_MEM_CAP, RtData, WRITE_BACK_XN},
+   {"Kernel",           0xA0000000, 0x10000000, AddMem, MEM_RES, SYS_MEM_CAP, Reserv, WRITE_BACK_XN},
+-  {"DXE Heap",         0xB0000000, 0x04500000, AddMem, SYS_MEM, SYS_MEM_CAP, Conv,   WRITE_BACK_XN},
++  // 69 MiB (0x04500000) ran out during DXE dispatch: the DEBUG PE images plus
++  // HII/console buffers consumed it, and SecurityStubDxe, CapsuleRuntimeDxe,
++  // EmbeddedMonotonicCounter and RealTimeClockRuntimeDxe then failed with
++  // EFI_OUT_OF_RESOURCES, so DxeCore asserted at DxeMain.c(581). The live DTB
++  // has DRAM from 0x80000000 for 0x3BB00000 bytes, i.e. up to 0xBBB00000, so
++  // the heap can grow to 176 MiB and still stay inside real memory.
++  {"DXE Heap",         0xB0000000, 0x0B000000, AddMem, SYS_MEM, SYS_MEM_CAP, Conv,   WRITE_BACK_XN},
+ 
+   // Other Memory Regions
+   {"IMEM Base",        0x14680000, 0x00040000, NoHob,  MMAP_IO, INITIALIZED, Conv,   NS_DEVICE},
+diff --git a/Platforms/OnePlus/kebabPkg/kebab.dsc b/Platforms/OnePlus/kebabPkg/kebab.dsc
+index 767231c..7f8f389 100644
+--- a/Platforms/OnePlus/kebabPkg/kebab.dsc
++++ b/Platforms/OnePlus/kebabPkg/kebab.dsc
+@@ -24,6 +24,7 @@
+   SKUID_IDENTIFIER               = DEFAULT
+   FLASH_DEFINITION               = kebabPkg/kebab.fdf
+   USE_CUSTOM_DISPLAY_DRIVER      = 0
++  USE_UART                       = 0
+ 
+   #
+   # 0 = SM8250
+@@ -35,6 +36,7 @@
+ !include KonaPkg/KonaPkg.dsc.inc
+ 
+ [PcdsFixedAtBuild]
++
+   #
+   # DDR Memory
+   #
+@@ -83,3 +85,34 @@
+   # ACPI Tables
+   #
+   kebab/AcpiTables.inf
++
++[LibraryClasses]
++  UniXNULib|UniXNUPkg/Library/UniXNULib/UniXNULib.inf
++  FileExplorerLib|MdeModulePkg/Library/FileExplorerLib/FileExplorerLib.inf
++  AdvancedLoggerLib|AdvLoggerPkg/Library/AdvancedLoggerLib/Dxe/AdvancedLoggerLib.inf
++  AdvancedLoggerAccessLib|AdvLoggerPkg/Library/AdvancedLoggerAccessLib/AdvancedLoggerAccessLib.inf
++  QrEncoderLib|MsGraphicsPkg/Library/QrEncoderLib/QrEncoderLib.inf
++  FdtLib|MdePkg/Library/BaseFdtLib/BaseFdtLib.inf
++  HobLib|MdePkg/Library/DxeHobLib/DxeHobLib.inf
++  # KEBAB: force the frame-buffer debug port so DEBUG() text exists in DEBUG builds.
++  # The inherited library mapping in SiliciumPkg.dsc.inc was selecting a null
++  # DebugLib for this DSC, which compiled every DEBUG() call away: the rebuilt
++  # firmware had no log output at all (modules ~12 KB smaller than the 11-15 build).
++  DebugLib|MdePkg/Library/BaseDebugLibSerialPort/BaseDebugLibSerialPort.inf
++  SerialPortLib|SiliciumPkg/Library/FrameBufferSerialPortLib/FrameBufferSerialPortLib.inf
++
++[Packages]
++  UniXNUPkg/UniXNUPkg.dec
++  AdvLoggerPkg/AdvLoggerPkg.dec
++  MsGraphicsPkg/MsGraphicsPkg.dec
++
++[Components]
++  UniXNUPkg/Driver/UniXNUDxe/UniXNUDxe.inf
++  UniXNUPkg/Application/UniXNU/UniXNU.inf
++  UniXNUPkg/Driver/AdvancedLogDxe/AdvancedLogDxe.inf
++  DarwinBootPkg/Driver/DarwinBoot.inf
++  # UniXNUPkg/Driver/FsProbe/FsProbe.inf   # diagnostic, halts on purpose
++  # MdeModulePkg/Universal/Disk/RamDiskDxe/RamDiskDxe.inf   # registers an ExitBootServices handler and is unused
++  kebabPkg/Driver/KebabRamDiskPrebuilt/KebabRamDisk.inf
++  # KebabBootLog disabled: reads unmapped 0xB9000010 and faults before BDS. See kebab.fdf.
++  # kebabPkg/Driver/KebabBootLog/KebabBootLog.inf
+diff --git a/Platforms/OnePlus/kebabPkg/kebab.fdf b/Platforms/OnePlus/kebabPkg/kebab.fdf
+index 171876d..348834d 100644
+--- a/Platforms/OnePlus/kebabPkg/kebab.fdf
++++ b/Platforms/OnePlus/kebabPkg/kebab.fdf
+@@ -43,10 +43,14 @@ NumBlocks     = $(FD_BLOCKS)
+ #
+ ################################################################################
+ 
+-0x00000000|$(FD_SIZE)
++0x00000000|0x00300000
+ gArmTokenSpaceGuid.PcdFvBaseAddress|gArmTokenSpaceGuid.PcdFvSize
+ FV = FVMAIN_COMPACT
+ 
++0x00300000|0x4300000
++FILE = /Users/luminzhi/UniXNU/kebabwork/empty-payload.img
++
++
+ ################################################################################
+ #
+ # FV Section
+@@ -102,6 +106,24 @@ READ_LOCK_STATUS   = TRUE
+   #  SECTION UI = "DeviceTreeBlob"
+   #}
+ 
++  #
++  # UniXNU boot manager
++  #
++  # KebabBootLog disabled: it reads the kernel probe ring at 0xB9000010, which
++  # UEFI leaves unmapped (the memory map ends at 0xB4500000). The first
++  # InvalidateDataCacheRange() rounds down to 0xB9000000 and the resulting data
++  # abort (translation fault, level 2, WnR=1) dead-loops in the exception
++  # handler before BDS, so UniXNU never runs. The probe ring is dead anyway:
++  # 0xB9000010 does not survive a reset; pram 0x17F00FE0 is the persistent page.
++  # INF kebabPkg/Driver/KebabBootLog/KebabBootLog.inf
++  INF UniXNUPkg/Driver/UniXNUDxe/UniXNUDxe.inf
++  INF DarwinBootPkg/Driver/DarwinBoot.inf
++  INF UniXNUPkg/Driver/AdvancedLogDxe/AdvancedLogDxe.inf
++  INF UniXNUPkg/Application/UniXNU/UniXNU.inf
++  # FsProbe disabled
++  # INF MdeModulePkg/Universal/Disk/RamDiskDxe/RamDiskDxe.inf
++  INF kebabPkg/Driver/KebabRamDiskPrebuilt/KebabRamDisk.inf
++
+   !include QcomPkg/Extra.fdf.inc
+ 
+ [FV.FVMAIN_COMPACT]
+@@ -124,6 +146,10 @@ READ_LOCK_STATUS   = TRUE
+ 
+   INF SiliciumPkg/Sec/Sec.inf
+ 
++  # Payload FAT image, split because an FFS file is limited to 0xFFFFFF bytes.
++  # Payload FAT image, uncompressed so the RAM disk can point at it directly.
++
++
+   FILE FV_IMAGE = 9E21FD93-9C72-4c15-8C4B-E77F1DB2D792 {
+     SECTION GUIDED EE4E5898-3914-4259-9D6E-DC7BD79403CF PROCESSING_REQUIRED = TRUE {
+       SECTION FV_IMAGE = FVMAIN
+diff --git a/Resources/Configs/kebab.toml b/Resources/Configs/kebab.toml
+index 8191aaf..06a5c6f 100755
+--- a/Resources/Configs/kebab.toml
++++ b/Resources/Configs/kebab.toml
+@@ -9,7 +9,7 @@ requires_kernel_header = true
+ #
+ [uefi_fd]
+ base = 0x9FC00000
+-size = 0x300000
++size = 0x4600000   # 3 MiB FV + 70 MiB payload region
+ 
+ #
+ # Android Boot Image Kernel Configs
+diff --git a/Silicon/Silicium/SiliciumPkg/Library/BootManagerLib/BootManager.c b/Silicon/Silicium/SiliciumPkg/Library/BootManagerLib/BootManager.c
+index 9b18ddb..7c666aa 100644
+--- a/Silicon/Silicium/SiliciumPkg/Library/BootManagerLib/BootManager.c
++++ b/Silicon/Silicium/SiliciumPkg/Library/BootManagerLib/BootManager.c
+@@ -38,22 +38,31 @@ VOID
+ EFIAPI
+ PlatformBootManagerBeforeConsole ()
+ {
++  // KEBAB: phase markers for the framebuffer log (the only debug channel here).
++  DEBUG ((DEBUG_ERROR, "[KEBAB-BDS] before-console enter\n"));
++
+   // Signal End Of DXE
++  DEBUG ((DEBUG_ERROR, "[KEBAB-BDS] signal EndOfDxe\n"));
+   EfiEventGroupSignal (&gEfiEndOfDxeEventGroupGuid);
+ 
+   // Dispatch Deferred Images
++  DEBUG ((DEBUG_ERROR, "[KEBAB-BDS] dispatch deferred images\n"));
+   EfiBootManagerDispatchDeferredImages ();
+ 
+   // Register Boot Options
++  DEBUG ((DEBUG_ERROR, "[KEBAB-BDS] register default boot options\n"));
+   MsBootOptionsLibRegisterDefaultBootOptions ();
+ 
+   // Register Console Variables
++  DEBUG ((DEBUG_ERROR, "[KEBAB-BDS] register console variables\n"));
+   EfiBootManagerUpdateConsoleVariable (ConIn,  (EFI_DEVICE_PATH_PROTOCOL *)&KeypadDevicePath,  NULL);
+   EfiBootManagerUpdateConsoleVariable (ConOut, (EFI_DEVICE_PATH_PROTOCOL *)&DisplayDevicePath, NULL);
+   EfiBootManagerUpdateConsoleVariable (ErrOut, (EFI_DEVICE_PATH_PROTOCOL *)&DisplayDevicePath, NULL);
+ 
+   // Execute Secondary Before Console
++  DEBUG ((DEBUG_ERROR, "[KEBAB-BDS] device before-console\n"));
+   DeviceBootManagerBeforeConsole (NULL, NULL);
++  DEBUG ((DEBUG_ERROR, "[KEBAB-BDS] before-console done\n"));
+ }
+ 
+ VOID
+@@ -101,14 +110,18 @@ PlatformBootManagerAfterConsole ()
+   EFI_STATUS                    Status      = EFI_SUCCESS;
+   EFI_GRAPHICS_OUTPUT_PROTOCOL *GopProtocol = NULL;
+ 
++  DEBUG ((DEBUG_ERROR, "[KEBAB-BDS] after-console enter\n"));
++
+   // Post Setup GOP
+   PostGopSetup (&GopProtocol);
++  DEBUG ((DEBUG_ERROR, "[KEBAB-BDS] gop %p\n", GopProtocol));
+ 
+   // Display Boot Logo
+   Status = DisplayBootGraphic (BG_SYSTEM_LOGO);
+   if (EFI_ERROR (Status)) {
+     DEBUG ((EFI_D_ERROR, "%a: Failed to Display Boot Logo! Status = %r\n", __FUNCTION__, Status));
+   }
++  DEBUG ((DEBUG_ERROR, "[KEBAB-BDS] boot logo done\n"));
+ 
+   // Register Key Callback
+   Status = RegisterKeyCallback ((EFI_DEVICE_PATH_PROTOCOL *)&KeypadDevicePath);
+@@ -124,6 +137,7 @@ PlatformBootManagerAfterConsole ()
+ 
+   // Execute Secondary After Console
+   DeviceBootManagerAfterConsole ();
++  DEBUG ((DEBUG_ERROR, "[KEBAB-BDS] after-console done\n"));
+ }
+ 
+ VOID
+@@ -229,13 +243,18 @@ PlatformBootManagerBdsEntry ()
+ {
+   EFI_STATUS Status;
+ 
++  DEBUG ((DEBUG_ERROR, "[KEBAB-BDS] BdsEntry: secure boot setup\n"));
++
+   // Setup Secure Boot
+   Status = SetupSecureBoot ();
+   ASSERT_EFI_ERROR (Status);
++  DEBUG ((DEBUG_ERROR, "[KEBAB-BDS] BdsEntry: secure boot done\n"));
+ 
+   // Update ACPI Tables
+   UpdateAcpiTables ();
++  DEBUG ((DEBUG_ERROR, "[KEBAB-BDS] BdsEntry: acpi tables updated\n"));
+ 
+   // Execute Secondary BDS Entry
+   DeviceBootManagerBdsEntry ();
++  DEBUG ((DEBUG_ERROR, "[KEBAB-BDS] BdsEntry: done\n"));
+ }
+diff --git a/Silicon/Silicium/SiliciumPkg/Library/FrameBufferSerialPortLib/FrameBufferSerialPortLib.c b/Silicon/Silicium/SiliciumPkg/Library/FrameBufferSerialPortLib/FrameBufferSerialPortLib.c
+index d2844e0..7205544 100644
+--- a/Silicon/Silicium/SiliciumPkg/Library/FrameBufferSerialPortLib/FrameBufferSerialPortLib.c
++++ b/Silicon/Silicium/SiliciumPkg/Library/FrameBufferSerialPortLib/FrameBufferSerialPortLib.c
+@@ -113,8 +113,12 @@ AdvanceNewLine (
+ 
+   // Verify Y Position
+   if (CurrentPosition->YPos >= MaxPosition.YPos) {
+-    // Clear Frame Buffer
+-    ZeroMem ((VOID *)FbBase, FB_WIDTH * FB_HEIGHT * FB_BPP);
++    //
++    // KEBAB: clear instead of scrolling. Scrolling keeps the last screen of log
++    // (which once saved a lost DxeCore report) but copies the whole 10 MiB
++    // framebuffer per line, which made the DEBUG boot crawl on this panel.
++    //
++    ZeroMem ((VOID *)(UINTN)FbBase, FB_WIDTH * FB_HEIGHT * FB_BPP);
+ 
+     // Reset X & Y Position
+     CurrentPosition->XPos = 0;
+@@ -183,6 +187,12 @@ WriteFrameBuffer (
+       AdvanceNewLine (FbBase, FbLength, CurrentPosition, MaxPosition);
+     } else if (Character == '\r') {
+       CurrentPosition->XPos = 0;
++    } else if (Character == '\f') {
++      // Form feed clears the screen and homes the cursor. DarwinBoot uses it to
++      // put its hand-off log at the top of the panel.
++      ZeroMem ((VOID *)FbBase, FB_WIDTH * FB_HEIGHT * FB_BPP);
++      CurrentPosition->XPos = 0;
++      CurrentPosition->YPos = 0;
+     }
+ 
+     return;
+@@ -250,6 +260,7 @@ SerialPortWrite (
+ 
+   // Get Frame Buffer Memory
+   Status = GetFrameBufferMemory (&FbBase, &FbLength);
++
+   if (EFI_ERROR (Status)) {
+     return 0;
+   }
+@@ -262,6 +273,15 @@ SerialPortWrite (
+     ArmDisableInterrupts ();
+   }
+ 
++  // Capture the first console row before writing, so the cache maintenance
++  // below can flush only the rows this chunk touched.
++  EFI_FRAME_BUFFER_POSITION *FlushPos;
++  EFI_FRAME_BUFFER_POSITION  FlushMax;
++  UINT8                      FlushScale = GetFontScale ();
++  UINTN                      FlushStartY;
++  GetFbPositions (FbBase, FbLength, FlushScale, &FlushPos, &FlushMax);
++  FlushStartY = FlushPos->YPos;
++
+   // Write Debug Message to Frame Buffer
+   for (UINTN i = 0; i < NumberOfBytes; i++) {
+     WriteFrameBuffer (FbBase, FbLength, *Buffer++);
+@@ -272,8 +292,25 @@ SerialPortWrite (
+     ArmEnableInterrupts ();
+   }
+ 
+-  // Flush Frame Buffer
+-  WriteBackInvalidateDataCacheRange ((VOID *)FbBase, FbLength);
++  // Flush only the rows this write touched. Flushing the whole framebuffer
++  // (1080*2400*4 = ~10.4 MiB) for every log chunk is what made the DXE log
++  // crawl on this panel; a clear or a scroll still gets one full flush.
++  {
++    UINTN GlyphHeight = (FONT_HEIGHT - 4) * FlushScale;
++    UINTN RowBytes = FB_WIDTH * FB_BPP;
++    UINTN EndY;
++    GetFbPositions (FbBase, FbLength, FlushScale, &FlushPos, &FlushMax);
++    EndY = FlushPos->YPos;
++    if ((EndY < FlushStartY) || (FlushStartY >= FB_HEIGHT) || (EndY >= FB_HEIGHT)) {
++      WriteBackInvalidateDataCacheRange ((VOID *)FbBase, FbLength);
++    } else {
++      UINTN First = FlushStartY * GlyphHeight * RowBytes;
++      UINTN Last  = (EndY + 1) * GlyphHeight * RowBytes;
++      if (Last > FbLength) { Last = FbLength; }
++      if (Last > First) { WriteBackInvalidateDataCacheRange ((VOID *)(UINTN)(FbBase + First), Last - First); }
++    }
++    WriteBackInvalidateDataCacheRange ((VOID *)FlushPos, sizeof (*FlushPos));
++  }
+ 
+   return NumberOfBytes;
+ }
+diff --git a/Silicon/Silicium/SiliciumPkg/SiliciumPkg.dsc.inc b/Silicon/Silicium/SiliciumPkg/SiliciumPkg.dsc.inc
+index 00ec09e..d251fe6 100644
+--- a/Silicon/Silicium/SiliciumPkg/SiliciumPkg.dsc.inc
++++ b/Silicon/Silicium/SiliciumPkg/SiliciumPkg.dsc.inc
+@@ -68,9 +68,16 @@
+ !if $(TARGET) == DEBUG
+   gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x2F
+   gEfiMdePkgTokenSpaceGuid.PcdDebugClearMemoryValue|0xAF
+-  gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x8007EE0F
++  #
++  # KEBAB: 0x8007EE0F with DEBUG_INFO (0x40) added, so DxeCore prints
++  # "Loading driver at ... <name>.efi" for every image and BDS prints its
++  # progress. The framebuffer log is the only observation channel on this
++  # board; without DEBUG_INFO the log stops at a driver's last line and the
++  # hang cannot be located.
++  #
++  gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x8007EE4F
+ !else
+-  gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x00
++  gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x2F
+   gEfiMdePkgTokenSpaceGuid.PcdDebugClearMemoryValue|0x00
+   gEfiMdePkgTokenSpaceGuid.PcdDebugPrintErrorLevel|0x00000000
+ !endif
+@@ -86,7 +93,7 @@
+   #
+   # Boot Manager
+   #
+-  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|3
++  gEfiMdePkgTokenSpaceGuid.PcdPlatformBootTimeOut|0
+   gEfiMdeModulePkgTokenSpaceGuid.PcdBootManagerMenuFile|{ 0xDC, 0x5B, 0xC2, 0xEE, 0xF2, 0x67, 0x95, 0x4D, 0xB1, 0xD5, 0xF8, 0x1B, 0x20, 0x39, 0xD1, 0x1D }
+   gEfiMdeModulePkgTokenSpaceGuid.PcdBootManagerInBootOrder|FALSE
+   gEfiMdeModulePkgTokenSpaceGuid.PcdPlatformRecoverySupport|FALSE
+@@ -94,7 +101,7 @@
+   #
+   # Graphics
+   #
+-  gSiliciumPkgTokenSpaceGuid.PcdFrameBufferDelay|10000          # In Microseconds
++  gSiliciumPkgTokenSpaceGuid.PcdFrameBufferDelay|0              # KEBAB: 10 ms per log line made the DEBUG boot crawl; 0 draws as fast as the panel allows
+ 
+   #
+   # Input
+@@ -158,7 +165,10 @@
+   #
+   # Debug Libraries
+   #
+-!if $(TARGET) == DEBUG
++!if $(USE_UART) == 1
++  SerialPortLib|QcomPkg/Library/UARTSerialPortLib/UARTSerialPortLib.inf
++  DebugLib|MdePkg/Library/BaseDebugLibSerialPort/BaseDebugLibSerialPort.inf
++!elseif $(TARGET) == DEBUG
+   SerialPortLib|SiliciumPkg/Library/FrameBufferSerialPortLib/FrameBufferSerialPortLib.inf
+   DebugLib|MdePkg/Library/BaseDebugLibSerialPort/BaseDebugLibSerialPort.inf
+ !else
+@@ -408,7 +418,7 @@
+   MdeModulePkg/Core/RuntimeDxe/RuntimeDxe.inf
+   MdeModulePkg/Universal/ReportStatusCodeRouter/RuntimeDxe/ReportStatusCodeRouterRuntimeDxe.inf {
+     <PcdsFixedAtBuild>
+-      gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x00
++      gEfiMdePkgTokenSpaceGuid.PcdDebugPropertyMask|0x2F
+   }
+   MdeModulePkg/Universal/StatusCodeHandler/RuntimeDxe/StatusCodeHandlerRuntimeDxe.inf
+   MdeModulePkg/Universal/Variable/RuntimeDxe/VariableRuntimeDxe.inf
+@@ -429,7 +439,7 @@
+ !endif
+   }
+   MdeModulePkg/Universal/WatchdogTimerDxe/WatchdogTimer.inf
+-  MdeModulePkg/Universal/CapsuleRuntimeDxe/CapsuleRuntimeDxe.inf
++    MdeModulePkg/Universal/CapsuleRuntimeDxe/CapsuleRuntimeDxe.inf
+ 
+   #
+   # Disk
