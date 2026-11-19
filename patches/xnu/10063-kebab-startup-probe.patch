@@ -1,0 +1,20 @@
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -954,7 +954,9 @@
+ 	kebab_early_mark(106, "arm_init: cpu_machine_idle_init returned");
+ 	boot_progress_stage("cpu_machine_idle_init returned");
+ 
++	kebab_early_mark(111, "arm_init: PE_init_platform(TRUE) next");
+ 	PE_init_platform(TRUE, &BootCpuData);
++	kebab_early_mark(112, "arm_init: PE_init_platform(TRUE) done");
+ 	boot_progress_stage("PE_init_platform(TRUE) returned");
+ 
+ #if __arm64__
+@@ -1022,6 +1024,7 @@
+ 	 */
+ 	__stack_chk_guard &= ~(0xFFULL << 8);
+ 	boot_progress_stage("machine_startup enter");
++	kebab_early_mark(115, "arm_init: machine_startup next");
+ 	machine_startup(args);
+ }
+ 

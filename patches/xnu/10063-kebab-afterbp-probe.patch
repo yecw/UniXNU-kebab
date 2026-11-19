@@ -1,0 +1,25 @@
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -862,9 +862,11 @@
+ 	kebab_early_mark(90, "arm_init: boot_progress_start done");
+ 	boot_progress_stage("arm_vm_init returned");
+ 
++	kebab_early_mark(96, "arm_init: patch_low_glo next");
+ 	if (debug_boot_arg) {
+ 		patch_low_glo();
+ 	}
++	kebab_early_mark(97, "arm_init: patch_low_glo done");
+ 
+ #if __arm64__ && WITH_CLASSIC_S2R
+ 	sleep_token_buffer_init();
+@@ -875,8 +877,10 @@
+ 	/* Setup debugging output. */
+ 	boot_progress_stage("serial_init enter");
+ 	const unsigned int serial_exists = serial_init();
++	kebab_early_mark(98, "arm_init: serial_init done");
+ 	boot_progress_stage("serial_init returned");
+ 	kernel_startup_initialize_upto(STARTUP_SUB_KPRINTF);
++	kebab_early_mark(99, "arm_init: startup upto kprintf done");
+ 	kprintf("kprintf initialized\n");
+ #if defined(KEBAB)
+ 	kebab_boot_memory_dump();

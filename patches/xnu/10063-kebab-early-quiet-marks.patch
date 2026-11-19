@@ -1,0 +1,14 @@
+--- a/osfmk/arm64/kebab_early.c
++++ b/osfmk/arm64/kebab_early.c
+@@ -99,6 +99,11 @@
+ void
+ kebab_early_mark(unsigned int stage, const char *label)
+ {
++	/* The L3 walk prints 50/51 once per allocation; that floods the panel and
++	 * makes every scroll redraw cost more than the information is worth. */
++	if ((stage == 50) || (stage == 51)) {
++		return;
++	}
+ 	char number[4];
+ 	unsigned int n = 0;
+ 

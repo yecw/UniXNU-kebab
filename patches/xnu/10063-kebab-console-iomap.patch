@@ -1,0 +1,14 @@
+--- a/osfmk/console/video_console.c
++++ b/osfmk/console/video_console.c
+@@ -2879,7 +2879,10 @@
+ 				} else {
+ 					newMapSize = (unsigned int) round_page(new_vinfo.v_height * new_vinfo.v_rowbytes);                      /* Remember size */
+ 				}
+-				newVideoVirt = ml_io_map_unmappable((vm_map_offset_t)new_vinfo.v_physaddr, newMapSize, flags);   /* Allocate address space for framebuffer */
++				/* KEBAB: ml_io_map_unmappable() blocks on this board (the same path the
++				 * 2026-11 record blamed for PE_create_console). ml_io_map() maps the
++				 * panel fine - the boot progress cards already use it. */
++				newVideoVirt = ml_io_map((vm_map_offset_t)new_vinfo.v_physaddr, newMapSize);
+ 			}
+ 			new_vinfo.v_baseaddr = newVideoVirt + boot_vinfo->v_offset;                     /* Set the new framebuffer address */
+ 		}

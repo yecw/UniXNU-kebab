@@ -1,0 +1,22 @@
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -952,6 +952,19 @@
+ 	kebab_early_mark(105, "arm_init: cpu_machine_idle_init next");
+ 	cpu_machine_idle_init(TRUE);
+ 	kebab_early_mark(106, "arm_init: cpu_machine_idle_init returned");
++	{
++		/*
++		 * KEBAB: turn the APSS watchdog off now that mappings can be made.
++		 * Without it a later hang resets the phone before the panic text can
++		 * be read on the panel.
++		 */
++		vm_offset_t kebab_wdt = ml_io_map(0x17C10000UL, 0x1000UL);
++
++		if (kebab_wdt) {
++			*(volatile uint32_t *)(kebab_wdt + 0x08) = 0;
++		}
++		kebab_early_mark(116, "arm_init: APSS watchdog disabled");
++	}
+ 	boot_progress_stage("cpu_machine_idle_init returned");
+ 
+ 	kebab_early_mark(111, "arm_init: PE_init_platform(TRUE) next");

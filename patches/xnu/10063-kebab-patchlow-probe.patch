@@ -1,0 +1,12 @@
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -2547,6 +2547,9 @@
+ #endif
+ 	first_avail = avail_start;
+ 	kebab_early_mark(79, "tail: first_avail set");
++	kebab_early_mark(91, "tail: patch_low_glo args, top / size");
++	kebab_early_hex((uint64_t)args->topOfKernelData);
++	kebab_early_hex((uint64_t)(avail_start - args->topOfKernelData));
+ 	patch_low_glo_static_region(args->topOfKernelData, avail_start - args->topOfKernelData);
+ 	kebab_early_mark(80, "tail: patch_low_glo_static_region done");
+ 	enable_preemption();

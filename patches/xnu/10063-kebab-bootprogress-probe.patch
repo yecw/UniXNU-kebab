@@ -1,0 +1,12 @@
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -857,7 +857,9 @@
+ 
+ 	/* KEBAB: map the ramoops zone before the console exists, so a stall inside
+ 	 * PE_create_console() still leaves a log behind. */
++	kebab_early_mark(89, "arm_init: boot_progress_start next");
+ 	boot_progress_start();
++	kebab_early_mark(90, "arm_init: boot_progress_start done");
+ 	boot_progress_stage("arm_vm_init returned");
+ 
+ 	if (debug_boot_arg) {

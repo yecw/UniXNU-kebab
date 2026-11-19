@@ -1,0 +1,32 @@
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -834,10 +834,25 @@
+ 	 * arm_vm_init() (it stops the boot there). Convert it now, while
+ 	 * PE_create_console later still reads PE_state.video.
+ 	 */
+-	kebab_early_mark(29, "arm_init: ml_static_ptovirt(video) next");
+-	PE_state.video.v_baseAddr = (unsigned long)ml_static_ptovirt(
+-		(vm_offset_t)(PE_state.video.v_baseAddr & ~3UL));
+-	kebab_early_mark(87, "arm_init: ml_static_ptovirt(video) done");
++	{
++		vm_offset_t kebab_vbase = (vm_offset_t)(PE_state.video.v_baseAddr & ~3UL);
++
++		/*
++		 * KEBAB: the frame buffer sits at 0x9C000000, below the physmap window
++		 * that starts at args->physBase, so ml_static_ptovirt() cannot resolve
++		 * it and the boot stops right here. Leave the physical address in place
++		 * when it is outside the window; PE_create_console() maps the frame
++		 * buffer on its own.
++		 */
++		if (((uint64_t)kebab_vbase >= (uint64_t)args->physBase) &&
++		    ((uint64_t)kebab_vbase < (uint64_t)args->physBase + (uint64_t)xmaxmem)) {
++			kebab_early_mark(29, "arm_init: ml_static_ptovirt(video) next");
++			PE_state.video.v_baseAddr = (unsigned long)ml_static_ptovirt(kebab_vbase);
++			kebab_early_mark(87, "arm_init: ml_static_ptovirt(video) done");
++		} else {
++			kebab_early_mark(88, "video base outside physmap: keep the physical address");
++		}
++	}
+ 	kebab_early_mark(28, "arm_vm_init returned; video base converted");
+ 
+ 	/* KEBAB: map the ramoops zone before the console exists, so a stall inside

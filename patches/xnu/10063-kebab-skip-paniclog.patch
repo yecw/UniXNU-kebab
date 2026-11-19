@@ -1,0 +1,19 @@
+--- a/pexpert/arm/pe_init.c
++++ b/pexpert/arm/pe_init.c
+@@ -539,7 +539,15 @@
+ 	 */
+ 	extern void kebab_early_mark(unsigned stage, const char *label);
+ 	kebab_early_mark(107, "PE_create_console: check_for_panic_log next");
+-	check_for_panic_log();
++	/*
++	 * KEBAB: check_for_panic_log() reads the frame buffer through
++	 * PE_state.video.v_baseAddr. When the address is still physical (bit 0 set,
++	 * the aperture is outside the physmap window) that dereference faults and
++	 * PE_create_console never returns - the wall since the first bring-up.
++	 */
++	if ((PE_state.video.v_baseAddr & 1u) == 0) {
++		check_for_panic_log();
++	}
+ 	kebab_early_mark(108, "PE_create_console: check_for_panic_log done");
+ 
+ 	if (PE_state.video.v_display) {

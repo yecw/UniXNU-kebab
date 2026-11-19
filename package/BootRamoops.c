@@ -96,7 +96,10 @@ static void put(const char *text, unsigned n) {
 static void cards_draw(void) {
   if (!fb) {
     if (!gVirtBase) return;                 // arm_vm_init has not set the aperture yet
-    fb = (volatile u32 *)ml_static_ptovirt(FB_BASE);
+    /* The panel sits at 0x9C000000, below the physmap window that starts at
+     * args->physBase, so ml_static_ptovirt() cannot resolve it (the boot stops
+     * inside the first card write). ml_io_map() maps it on its own. */
+    fb = (volatile u32 *)ml_io_map(FB_BASE, (u64)FB_HEIGHT * FB_ROW * 4);
     if (!fb) return;
   }
   unsigned count = cards;
@@ -163,8 +166,12 @@ static void writer(void *argument, int result) {
 
 void boot_progress_init(void) {line("", "boot_progress_init (stages kept until the ramoops zone is mapped)");}
 
+extern void kebab_early_mark(unsigned stage, const char *label);
+
 void boot_progress_start(void) {
+  kebab_early_mark(92, "boot_progress_start: ml_io_map(ramoops) next");
   volatile u8 *mapped = (volatile u8 *)ml_io_map(ZONE_BASE, ZONE_SIZE);
+  kebab_early_mark(93, "boot_progress_start: ml_io_map done");
   if (!mapped) return;
   u64 daif = take();
   zone = mapped;
@@ -172,11 +179,16 @@ void boot_progress_start(void) {
   zone_put(banner, sizeof banner - 1);
   zone_put(early, early_len);
   give(daif);
+  kebab_early_mark(94, "boot_progress_start: ring written, cards_draw next");
   cards = 1;
   cards_draw();
-  void *thread = 0;
-  if (kernel_thread_start(writer, 0, &thread) == 0) thread_deallocate(thread);
-  else line("", "message buffer thread NOT started");
+  kebab_early_mark(95, "boot_progress_start: cards drawn");
+  /*
+   * The writer thread only redraws the stage cards every PASS_MS and drains the
+   * message buffer. kernel_thread_start() here does not return on this board
+   * (the scheduler is not up yet), so it stays disabled until that is fixed.
+   */
+  kebab_early_mark(100, "boot_progress_start: writer thread skipped");
 }
 
 int boot_progress_active(void) {return 0;}

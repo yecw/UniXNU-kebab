@@ -1,0 +1,22 @@
+--- a/pexpert/arm/pe_init.c
++++ b/pexpert/arm/pe_init.c
+@@ -537,12 +537,19 @@
+ 	 * Check the head of VRAM for a panic log saved on last panic.
+ 	 * Do this before the VRAM is trashed.
+ 	 */
++	extern void kebab_early_mark(unsigned stage, const char *label);
++	kebab_early_mark(107, "PE_create_console: check_for_panic_log next");
+ 	check_for_panic_log();
++	kebab_early_mark(108, "PE_create_console: check_for_panic_log done");
+ 
+ 	if (PE_state.video.v_display) {
++		kebab_early_mark(109, "PE_create_console: PE_initialize_console(graphics) next");
+ 		PE_initialize_console(&PE_state.video, kPEGraphicsMode);
++		kebab_early_mark(110, "PE_create_console: console initialized");
+ 	} else {
++		kebab_early_mark(109, "PE_create_console: PE_initialize_console(text) next");
+ 		PE_initialize_console(&PE_state.video, kPETextMode);
++		kebab_early_mark(110, "PE_create_console: console initialized");
+ 	}
+ }
+ 

@@ -1,0 +1,17 @@
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -850,7 +850,13 @@
+ 			PE_state.video.v_baseAddr = (unsigned long)ml_static_ptovirt(kebab_vbase);
+ 			kebab_early_mark(87, "arm_init: ml_static_ptovirt(video) done");
+ 		} else {
+-			kebab_early_mark(88, "video base outside physmap: keep the physical address");
++			/*
++			 * initialize_screen() only treats v_baseAddr as a physical address
++			 * when bit 0 is set; without it PE_create_console() calls
++			 * ml_io_map() on a value that is already physical and blocks there.
++			 */
++			kebab_early_mark(88, "video base outside physmap: tag it physical");
++			PE_state.video.v_baseAddr = (unsigned long)(kebab_vbase | 1u);
+ 		}
+ 	}
+ 	kebab_early_mark(28, "arm_vm_init returned; video base converted");

@@ -1,0 +1,18 @@
+--- a/osfmk/arm64/machine_routines.c
++++ b/osfmk/arm64/machine_routines.c
+@@ -522,7 +522,14 @@
+ 	boot_progress_panic_vinfo.v_width    = (unsigned int)args->Video.v_width;
+ 	boot_progress_panic_vinfo.v_depth    = (unsigned int)args->Video.v_depth;
+ 	boot_progress_panic_vinfo.v_rowbytes = (unsigned int)args->Video.v_rowBytes;
+-	boot_progress_panic_vinfo.v_baseaddr = (unsigned long)phystokv((vm_offset_t)args->Video.v_baseAddr);
++	/*
++	 * KEBAB: the panel at 0x9C000000 is outside the physmap window, so
++	 * phystokv() cannot resolve it and the red band below writes through a
++	 * garbage pointer (the boot stops here). ml_io_map() maps it directly.
++	 */
++	boot_progress_panic_vinfo.v_baseaddr = (unsigned long)ml_io_map(
++	    (vm_offset_t)(args->Video.v_baseAddr & ~3UL),
++	    (uint64_t)round_page((vm_size_t)args->Video.v_rowBytes * (vm_size_t)args->Video.v_height));
+ 
+ 	/*
+ 	 * KEBAB: paint the top eighth of the panel red from here. The firmware
