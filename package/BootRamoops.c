@@ -200,6 +200,14 @@ void boot_progress_putc(char c)
 	/* kprintf reaches the video console slot now: keep the characters visible. */
 	extern void kebab_early_putc(char c);
 	kebab_early_putc(c);
+	/*
+	 * Also keep the same stream in the ramoops ring. The panel is cleared by
+	 * whatever hangs next, and the ring survives the reset: the firmware can
+	 * dump it on the following boot.
+	 */
+	if (zone) {
+		zone_put(&c, 1);
+	}
 }
 void boot_progress_stage(const char *text) {line("stage: ", text); if (cards < 10) ++cards; cards_draw();}
 void boot_progress_irq(u64 pc, u64 cpsr, u64 sp) {(void)pc; (void)cpsr; (void)sp;}
