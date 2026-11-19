@@ -1,0 +1,12 @@
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -964,6 +964,9 @@
+ 			*(volatile uint32_t *)(kebab_wdt + 0x08) = 0;
+ 		}
+ 		kebab_early_mark(116, "arm_init: APSS watchdog disabled");
++		kebab_early_mark(117, "arm_init: wdt va and enable readback");
++		kebab_early_hex((uint64_t)kebab_wdt);
++		kebab_early_hex((uint64_t)(kebab_wdt ? *(volatile uint32_t *)(kebab_wdt + 0x08) : 0xdeadbeef));
+ 	}
+ 	boot_progress_stage("cpu_machine_idle_init returned");
+ 

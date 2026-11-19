@@ -159,6 +159,9 @@ kernel_args = [
   "ufsroot=userdata",
   "rootrw=0",
   "keepsyms=1",
+  # Ask kernel_bootstrap/kernel_bootstrap_thread to print every phase on the
+  # console; the panel is the only log this board has.
+  "startup_debug=1",
   "kt_fixed_zones=120",
 ]
 

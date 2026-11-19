@@ -79,3 +79,4 @@ pending/adapt-0367-after-0366.patch
 10063-kebab-startup-probe.patch
 10063-kebab-msvideo-iomap.patch
 10063-kebab-wdt-off.patch
+10063-kebab-wdt-probe.patch
