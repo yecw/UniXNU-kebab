@@ -1,0 +1,140 @@
+--- a/bsd/conf/files
++++ b/bsd/conf/files
+@@ -609,4 +609,45 @@
+ bsd/skywalk/packet/packet_kern.c		optional skywalk
+ bsd/skywalk/packet/pbufpool.c			optional skywalk
+ bsd/skywalk/packet/pbufpool_kern.c		optional skywalk
+ bsd/dev/cpu_copy_in_cksum_gen.c			optional skywalk
++# Apple OSS hfs-627.100.6, built in only on KEBAB.
++bsd/kebab_hfs/core/BTree.c		optional kebab_hfs
++bsd/kebab_hfs/core/BTreeAllocate.c		optional kebab_hfs
++bsd/kebab_hfs/core/BTreeMiscOps.c		optional kebab_hfs
++bsd/kebab_hfs/core/BTreeNodeOps.c		optional kebab_hfs
++bsd/kebab_hfs/core/BTreeNodeReserve.c		optional kebab_hfs
++bsd/kebab_hfs/core/BTreeScanner.c		optional kebab_hfs
++bsd/kebab_hfs/core/BTreeTreeOps.c		optional kebab_hfs
++bsd/kebab_hfs/core/BTreeWrapper.c		optional kebab_hfs
++bsd/kebab_hfs/core/CatalogUtilities.c		optional kebab_hfs
++bsd/kebab_hfs/core/FileExtentMapping.c		optional kebab_hfs
++bsd/kebab_hfs/core/FileIDsServices.c		optional kebab_hfs
++bsd/kebab_hfs/core/MacOSStubs.c		optional kebab_hfs
++bsd/kebab_hfs/core/UnicodeWrappers.c		optional kebab_hfs
++bsd/kebab_hfs/core/VolumeAllocation.c		optional kebab_hfs
++bsd/kebab_hfs/core/hfs_attrlist.c		optional kebab_hfs
++bsd/kebab_hfs/core/hfs_btreeio.c		optional kebab_hfs
++bsd/kebab_hfs/core/hfs_catalog.c		optional kebab_hfs
++bsd/kebab_hfs/core/hfs_chash.c		optional kebab_hfs
++bsd/kebab_hfs/core/hfs_cnode.c		optional kebab_hfs
++bsd/kebab_hfs/core/hfs_cprotect.c		optional kebab_hfs
++bsd/kebab_hfs/core/hfs_endian.c		optional kebab_hfs
++bsd/kebab_hfs/core/hfs_extents.c		optional kebab_hfs
++bsd/kebab_hfs/core/hfs_fsinfo.c		optional kebab_hfs
++bsd/kebab_hfs/core/hfs_hotfiles.c		optional kebab_hfs
++bsd/kebab_hfs/core/hfs_journal.c		optional kebab_hfs
++bsd/kebab_hfs/core/hfs_link.c		optional kebab_hfs
++bsd/kebab_hfs/core/hfs_lookup.c		optional kebab_hfs
++bsd/kebab_hfs/core/hfs_notification.c		optional kebab_hfs
++bsd/kebab_hfs/core/hfs_quota.c		optional kebab_hfs
++bsd/kebab_hfs/core/hfs_readwrite.c		optional kebab_hfs
++bsd/kebab_hfs/core/hfs_resize.c		optional kebab_hfs
++bsd/kebab_hfs/core/hfs_search.c		optional kebab_hfs
++bsd/kebab_hfs/core/hfs_vfsops.c		optional kebab_hfs
++bsd/kebab_hfs/core/hfs_vfsutils.c		optional kebab_hfs
++bsd/kebab_hfs/core/hfs_vnops.c		optional kebab_hfs
++bsd/kebab_hfs/core/hfs_xattr.c		optional kebab_hfs
++bsd/kebab_hfs/core/rangelist.c		optional kebab_hfs
++bsd/kebab_hfs/hfs_encodings/hfs_encodinghint.c		optional kebab_hfs
++bsd/kebab_hfs/hfs_encodings/hfs_encodings.c		optional kebab_hfs
++bsd/kebab_hfs/kebab_hfs_iokit.c		optional kebab_hfs
+
+--- a/bsd/conf/Makefile.template
++++ b/bsd/conf/Makefile.template
+@@ -586,8 +586,46 @@
+ endif
+ 
+ do_build_all:: do_all
+ 
++# Built-in Apple OSS HFS: compile the vendored kext with its KPI header view.
++KEBAB_HFS_ROOT = $(SRCROOT)/bsd/kebab_hfs
++KEBAB_HFS_OBJS = BTree.o BTreeAllocate.o BTreeMiscOps.o BTreeNodeOps.o BTreeNodeReserve.o BTreeScanner.o BTreeTreeOps.o BTreeWrapper.o CatalogUtilities.o FileExtentMapping.o FileIDsServices.o MacOSStubs.o UnicodeWrappers.o VolumeAllocation.o hfs_attrlist.o hfs_btreeio.o hfs_catalog.o hfs_chash.o hfs_cnode.o hfs_cprotect.o hfs_endian.o hfs_extents.o hfs_fsinfo.o hfs_hotfiles.o hfs_journal.o hfs_link.o hfs_lookup.o hfs_notification.o hfs_quota.o hfs_readwrite.o hfs_resize.o hfs_search.o hfs_vfsops.o hfs_vfsutils.o hfs_vnops.o hfs_xattr.o rangelist.o hfs_encodinghint.o hfs_encodings.o kebab_hfs_iokit.o
++$(foreach o,$(KEBAB_HFS_OBJS),$(eval $(o)_CFLAGS_ADD += -include $(KEBAB_HFS_ROOT)/kebab_hfs_compat.h -I$(KEBAB_HFS_ROOT) -I$(KEBAB_HFS_ROOT)/core))
++hfs_encodings.o_CFLAGS_ADD += -Dhfs_allocated=hfs_encodings_allocated
++hfs_encodinghint.o_CFLAGS_ADD += -Dhfs_allocated=hfs_encodings_allocated
++BTree.o_CWARNFLAGS_ADD += -Wno-cast-align -Wno-implicit-int-conversion
++BTreeAllocate.o_CWARNFLAGS_ADD += -Wno-cast-align -Wno-implicit-int-conversion -Wno-shorten-64-to-32
++BTreeMiscOps.o_CWARNFLAGS_ADD += -Wno-cast-align -Wno-unused-but-set-variable
++BTreeNodeOps.o_CWARNFLAGS_ADD += -Wno-cast-align -Wno-implicit-int-conversion
++BTreeNodeReserve.o_CWARNFLAGS_ADD += -Wno-shorten-64-to-32
++BTreeScanner.o_CWARNFLAGS_ADD += -Wno-cast-align -Wno-implicit-int-conversion
++BTreeTreeOps.o_CWARNFLAGS_ADD += -Wno-cast-align -Wno-implicit-int-conversion -Wno-unused-but-set-variable
++BTreeWrapper.o_CWARNFLAGS_ADD += -Wno-implicit-int-conversion
++CatalogUtilities.o_CWARNFLAGS_ADD += -Wno-implicit-int-conversion -Wno-misleading-indentation -Wno-shorten-64-to-32
++FileExtentMapping.o_CWARNFLAGS_ADD += -Wno-implicit-int-conversion -Wno-shorten-64-to-32
++FileIDsServices.o_CWARNFLAGS_ADD += -Wno-implicit-int-conversion
++hfs_attrlist.o_CWARNFLAGS_ADD += -Wno-cast-align -Wno-deprecated-non-prototype -Wno-implicit-int-conversion -Wno-shorten-64-to-32 -Wno-unused-but-set-variable
++hfs_btreeio.o_CWARNFLAGS_ADD += -Wno-cast-align -Wno-implicit-int-conversion -Wno-misleading-indentation -Wno-shorten-64-to-32
++hfs_catalog.o_CWARNFLAGS_ADD += -Wno-cast-align -Wno-implicit-int-conversion -Wno-shorten-64-to-32 -Wno-unused-but-set-variable -Wno-unused-parameter -Wno-implicit-fallthrough
++hfs_cnode.o_CWARNFLAGS_ADD += -Wno-cast-align -Wno-implicit-int-conversion -Wno-shorten-64-to-32 -Wno-unused-but-set-variable
++hfs_encodings.o_CWARNFLAGS_ADD += -Wno-implicit-int-conversion -Wno-shorten-64-to-32 -Wno-unreachable-code-break
++hfs_endian.o_CWARNFLAGS_ADD += -Wno-cast-align
++hfs_extents.o_CWARNFLAGS_ADD += -Wno-implicit-int-conversion
++hfs_fsinfo.o_CWARNFLAGS_ADD += -Wno-implicit-int-conversion
++hfs_hotfiles.o_CWARNFLAGS_ADD += -Wno-cast-align -Wno-implicit-int-conversion -Wno-shorten-64-to-32 -Wno-unused-but-set-variable
++hfs_journal.o_CWARNFLAGS_ADD += -Wno-cast-align -Wno-cast-qual -Wno-global-constructors -Wno-implicit-int-conversion -Wno-shorten-64-to-32 -Wno-unused-but-set-variable
++hfs_link.o_CWARNFLAGS_ADD += -Wno-cast-align -Wno-implicit-int-conversion -Wno-shorten-64-to-32 -Wno-unused-but-set-variable
++hfs_lookup.o_CWARNFLAGS_ADD += -Wno-implicit-int-conversion
++hfs_readwrite.o_CWARNFLAGS_ADD += -Wno-cast-align -Wno-implicit-int-conversion -Wno-shorten-64-to-32 -Wno-unused-but-set-variable
++hfs_resize.o_CWARNFLAGS_ADD += -Wno-implicit-int-conversion -Wno-shorten-64-to-32
++hfs_vfsops.o_CWARNFLAGS_ADD += -Wno-cast-align -Wno-implicit-int-conversion -Wno-shorten-64-to-32 -Wno-unused-parameter -Wno-unused-variable
++hfs_vfsutils.o_CWARNFLAGS_ADD += -Wno-global-constructors -Wno-implicit-fallthrough -Wno-implicit-int-conversion -Wno-shorten-64-to-32 -Wno-unused-but-set-variable
++hfs_vnops.o_CWARNFLAGS_ADD += -Wno-cast-align -Wno-global-constructors -Wno-implicit-int-conversion -Wno-shorten-64-to-32 -Wno-unused-but-set-variable
++hfs_xattr.o_CWARNFLAGS_ADD += -Wno-cast-align -Wno-cast-qual -Wno-implicit-int-conversion -Wno-shorten-64-to-32
++MacOSStubs.o_CWARNFLAGS_ADD += -Wno-shorten-64-to-32
++UnicodeWrappers.o_CWARNFLAGS_ADD += -Wno-implicit-int-conversion -Wno-shorten-64-to-32 -Wno-unused-but-set-variable
++VolumeAllocation.o_CWARNFLAGS_ADD += -Wno-address-of-packed-member -Wno-global-constructors -Wno-implicit-int-conversion -Wno-shorten-64-to-32
+ %RULES
+ 
+ include $(MakeInc_rule)
+ include $(MakeInc_dir)
+
+--- a/config/MASTER.arm64.bcm2837
++++ b/config/MASTER.arm64.bcm2837
+@@ -23,9 +23,9 @@
+ #  BSD_BASE =       [ mach_bsd psynch config_proc_uuid_policy config_personas ]
+ #  BSD_RELEASE =    [ BSD_BASE no_printf_str no_kprintf_str secure_kernel ]
+ #  BSD_DEV =        [ BSD_BASE config_netboot config_imageboot config_coredump pgo config_vnguard ]
+ #  BSD_DEBUG =      [ BSD_BASE config_netboot config_imageboot config_coredump pgo config_vnguard ]
+-#  FILESYS_BASE =   [ devfs fifo fs_compression config_protect config_mnt_rootsnap config_fse routefs namedstreams bindfs]
++#  FILESYS_BASE =   [ devfs fifo fs_compression config_protect config_mnt_rootsnap config_fse routefs namedstreams bindfs kebab_hfs]
+ #  FILESYS_RELEASE= [ FILESYS_BASE ]
+ #  FILESYS_DEV =    [ FILESYS_BASE config_union_mounts fdesc ]
+ #  FILESYS_DEBUG =  [ FILESYS_BASE config_union_mounts fdesc ]
+ #  NFS_DEV =        [ nfsserver ]
+@@ -80,8 +80,9 @@
+ machine		"arm64"						# <arm64>
+ 
+ makeoptions	OSFMK_MACHINE = "arm64"				# <mach>
+ 
++options		KEBAB_HFS	# Built-in Apple OSS HFS (KEBAB)	# <kebab_hfs>
+ options		COUNT_SYSCALLS		# count bsd system calls 	# <countcalls>
+ options     TRASH_VFP_ON_SAVE   # <debug,trash_vfp>
+ options		ALTERNATE_DEBUGGER	# <alternate_debugger>
+ 
+
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -798,8 +798,14 @@
+ 	/* Initialize the file systems. */
+ 	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(181, "bsd_init: IOKitInitializeTime done"); }
+ 	bsd_init_kprintf("calling vfsinit\n");
+ 	vfsinit();
++
++#if defined(KEBAB)
++	/* Built-in HFS must be registered before vfs_mountroot() walks vfsconf. */
++	extern void kebab_hfs_register(void);
++	kebab_hfs_register();
++#endif
+ #if DEVELOPMENT || DEBUG
+ 	native_apfs_load_probe();
+ 	native_mobile_graphics_load_probe();
+ 	native_iogpu_load_probe();
