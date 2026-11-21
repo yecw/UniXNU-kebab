@@ -1,0 +1,14 @@
+--- a/pexpert/arm/pe_init.c
++++ b/pexpert/arm/pe_init.c
+@@ -384,8 +384,11 @@
+ #endif
+ 	}
+ 
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(153, "PE_init_iokit: InitIOKit next"); }
+ 	InitIOKit(PE_state.deviceTreeHead);
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(154, "PE_init_iokit: InitIOKit done"); }
+ 	ConfigureIOKit();
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(155, "PE_init_iokit: ConfigureIOKit done"); }
+ }
+ 
+ void

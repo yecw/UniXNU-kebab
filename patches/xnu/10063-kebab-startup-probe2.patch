@@ -1,0 +1,35 @@
+--- a/osfmk/kern/startup.c
++++ b/osfmk/kern/startup.c
+@@ -91,6 +91,8 @@
+ #include <kern/sfi.h>
+ #endif
+ #include <kern/startup.h>
++
++extern void kebab_early_mark(unsigned stage, const char *label);
+ #include <kern/task.h>
+ #include <kern/thread.h>
+ #include <kern/timer.h>
+@@ -698,6 +700,7 @@
+ #ifdef  IOKIT
+ 	kernel_bootstrap_log("PE_init_iokit");
+ 	PE_init_iokit();
++	kebab_early_mark(120, "startup: PE_init_iokit done");
+ #endif
+ 
+ 	assert(ml_get_interrupts_enabled() == FALSE);
+@@ -718,6 +721,7 @@
+ 	 * This will start displaying progress to the user, start as early as possible
+ 	 */
+ 	initialize_screen(NULL, kPEAcquireScreen);
++	kebab_early_mark(121, "startup: initialize_screen(kPEAcquireScreen) done");
+ 
+ 	/*
+ 	 *	Initialize the shared region module.
+@@ -816,6 +820,7 @@
+ 	 */
+ #ifdef  MACH_BSD
+ 	bsd_init();
++	kebab_early_mark(122, "startup: bsd_init next");
+ #endif
+ 
+ 

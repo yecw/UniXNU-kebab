@@ -1,0 +1,27 @@
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -1702,9 +1702,21 @@
+ 	arm_vm_page_granular_RNX(segPLKDATACONSTB, segSizePLKDATACONST, ARM64_GRANULE_ALLOW_BLOCK);
+ 
+ #if defined(KEBAB)
+-	/* Admit the loader-owned banks once the pmap can map them and before the
+-	 * VM page arrays are built. */
+-	kebab_extra_memory_admit();
++	/*
++	 * Admitting the loader-owned banks is opt-in: vm_page_create() runs off the
++	 * end of the page array that arm_vm_init sizes from the primary window, and
++	 * the boot stops inside that loop (mark 138 reached, 139 not). Leaving it off
++	 * by default keeps the primary window's pages, which is all bring-up needs.
++	 */
++	{
++		int kebab_xram = 0;
++
++		if (PE_parse_boot_argn("kebab-xram", &kebab_xram, sizeof(kebab_xram)) && kebab_xram) {
++			kebab_extra_memory_admit();
++		} else {
++			kebab_early_mark(142, "prot_finalize: extra banks not admitted (kebab-xram=0)");
++		}
++	}
+ #endif
+ 	cpu_stack_alloc(&BootCpuData);
+ 	arm64_replace_bootstack(&BootCpuData);

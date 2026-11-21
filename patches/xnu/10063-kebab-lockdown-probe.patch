@@ -1,0 +1,34 @@
+--- a/osfmk/arm64/machine_routines.c
++++ b/osfmk/arm64/machine_routines.c
+@@ -596,7 +596,15 @@
+ #else
+ #endif
+ 
++	{
++		extern void kebab_early_mark(unsigned stage, const char *label);
++		kebab_early_mark(132, "machine_lockdown: arm_vm_prot_finalize next");
++	}
+ 	arm_vm_prot_finalize(PE_state.bootArgs);
++	{
++		extern void kebab_early_mark(unsigned stage, const char *label);
++		kebab_early_mark(133, "machine_lockdown: arm_vm_prot_finalize done");
++	}
+ 
+ #if CONFIG_KERNEL_INTEGRITY
+ #if KERNEL_INTEGRITY_WT
+@@ -639,7 +647,15 @@
+ 	 * the region is not executable at EL1.
+ 	 */
+ 
++	{
++		extern void kebab_early_mark(unsigned stage, const char *label);
++		kebab_early_mark(134, "machine_lockdown: rorgn_lockdown next");
++	}
+ 	rorgn_lockdown();
++	{
++		extern void kebab_early_mark(unsigned stage, const char *label);
++		kebab_early_mark(135, "machine_lockdown: rorgn_lockdown done");
++	}
+ #endif /* defined(KERNEL_INTEGRITY_KTRR) || defined(KERNEL_INTEGRITY_CTRR) */
+ #endif /* CONFIG_SPTM */
+ 

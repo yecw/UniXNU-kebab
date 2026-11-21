@@ -167,11 +167,14 @@ static void writer(void *argument, int result) {
 void boot_progress_init(void) {line("", "boot_progress_init (stages kept until the ramoops zone is mapped)");}
 
 extern void kebab_early_mark(unsigned stage, const char *label);
+extern void kebab_early_hex(u64 value);
 
 void boot_progress_start(void) {
   kebab_early_mark(92, "boot_progress_start: ml_io_map(ramoops) next");
   volatile u8 *mapped = (volatile u8 *)ml_io_map(ZONE_BASE, ZONE_SIZE);
   kebab_early_mark(93, "boot_progress_start: ml_io_map done");
+  kebab_early_hex((u64)mapped);
+  kebab_early_hex((u64)ZONE_BASE);
   if (!mapped) return;
   u64 daif = take();
   zone = mapped;

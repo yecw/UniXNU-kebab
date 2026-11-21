@@ -1,0 +1,21 @@
+--- a/pexpert/arm/pe_init.c
++++ b/pexpert/arm/pe_init.c
+@@ -271,7 +271,9 @@
+ #if defined(TARGET_OS_OSX) && defined(__arm64__)
+ 	printf("iBoot Stage 2 version: %s\n", iBoot_Stage_2_version);
+ #endif /* defined(TARGET_OS_OSX) && defined(__arm64__) */
+-
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(150, "PE_init_iokit: versions printed"); }
++
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(151, "PE_init_iokit: memory-map block next"); }
+ 	if (kSuccess == SecureDTLookupEntry(0, "/chosen/memory-map", &entry)) {
+ 		boot_progress_element const *bootPict;
+ 
+@@ -290,6 +292,7 @@
+ 	}
+ 
+ 	pe_prepare_images();
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(152, "PE_init_iokit: pe_prepare_images done"); }
+ 
+ 	scale = PE_state.video.v_scale;
+ 	flip = 1;

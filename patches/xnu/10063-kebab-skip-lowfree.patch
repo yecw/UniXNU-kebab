@@ -1,0 +1,19 @@
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -1682,7 +1682,16 @@
+ 		extern void kebab_early_mark(unsigned stage, const char *label);
+ 		kebab_early_mark(140, "prot_finalize: first ml_static_mfree next");
+ 	}
++#if defined(KEBAB)
++	/*
++	 * The low range [gPhysBase .. segLOWEST) still carries kernel CPU mappings on
++	 * this port, so pmap_assert_free() panics (pmap.c:2918) when it is handed to
++	 * ml_static_mfree(). Nothing here needs that memory back, so keep it mapped.
++	 */
++	kebab_early_mark(143, "prot_finalize: low-range free skipped (KEBAB)");
++#else
+ 	ml_static_mfree(phystokv(gPhysBase), segLOWEST - gVirtBase);
++#endif
+ 	{
+ 		extern void kebab_early_mark(unsigned stage, const char *label);
+ 		kebab_early_mark(141, "prot_finalize: first ml_static_mfree done");

@@ -1,0 +1,55 @@
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -754,6 +754,7 @@
+ 	/*
+ 	 * Charge root for one process: launchd.
+ 	 */
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(177, "bsd_init: session/pgrp/process 0 done"); }
+ 	bsd_init_kprintf("calling chgproccnt\n");
+ 	(void)chgproccnt(0, 1);
+ 
+@@ -761,6 +762,7 @@
+ 	 *	Allocate a kernel submap for pageable memory
+ 	 *	for temporary copying (execve()).
+ 	 */
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(178, "bsd_init: chgproccnt done"); }
+ 	bsd_init_kprintf("calling kmem_suballoc\n");
+ 	bsd_pageable_map = kmem_suballoc(kernel_map,
+ 	    &bsd_pageable_range.min_address,
+@@ -777,6 +779,7 @@
+ 	 *		happen after a credential has been associated with
+ 	 *		the kernel task.
+ 	 */
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(179, "bsd_init: kmem_suballoc done"); }
+ 	bsd_init_kprintf("calling bsd_bufferinit\n");
+ 	bsd_bufferinit();
+ 
+@@ -788,10 +791,12 @@
+ 	/*
+ 	 * Initialize the calendar.
+ 	 */
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(180, "bsd_init: bsd_bufferinit done"); }
+ 	bsd_init_kprintf("calling IOKitInitializeTime\n");
+ 	IOKitInitializeTime();
+ 
+ 	/* Initialize the file systems. */
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(181, "bsd_init: IOKitInitializeTime done"); }
+ 	bsd_init_kprintf("calling vfsinit\n");
+ 	vfsinit();
+ #if DEVELOPMENT || DEBUG
+@@ -926,6 +931,7 @@
+ 	}
+ #endif
+ 
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(182, "bsd_init: vfsinit done"); }
+ 	bsd_init_kprintf("calling bsd_autoconf\n");
+ 	bsd_autoconf();
+ 
+@@ -1018,6 +1024,7 @@
+ 		netboot = (mountroot == netboot_mountroot);
+ #endif
+ 
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(183, "bsd_init: bsd_autoconf done, mountroot next"); }
+ 		bsd_init_kprintf("vfs_mountroot\n");
+ 		boot_progress_stage("vfs_mountroot enter");
+ 		if (0 == (err = vfs_mountroot())) {

@@ -1,0 +1,33 @@
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -547,6 +547,7 @@
+ 	if (kebab_admitted_bytes) {
+ 		panic("KEBAB XRAM: duplicate page admission");
+ 	}
++	kebab_early_mark(136, "xram admit: write test next");
+ 	for (unsigned int i = 0; i < kebab_owned_memory_count; i++) {
+ 		const kebab_memory_record *d = &kebab_owned_memory[i];
+ 		/* Destructive test only while every page is exclusively loader-owned.
+@@ -560,6 +561,7 @@
+ 		}
+ 	}
+ 	__asm__ volatile("dsb sy" ::: "memory");
++	kebab_early_mark(137, "xram admit: write test done");
+ 	for (unsigned int i = 0; i < kebab_owned_memory_count; i++) {
+ 		const kebab_memory_record *d = &kebab_owned_memory[i];
+ 		for (unsigned long long off = 0; off < d->bytes; off += PAGE_SIZE) {
+@@ -577,12 +579,14 @@
+ 		}
+ 		kebab_tested_bytes += d->bytes;
+ 	}
++	kebab_early_mark(138, "xram admit: verify done");
+ 	for (unsigned int i = 0; i < kebab_owned_memory_count; i++) {
+ 		const kebab_memory_record *d = &kebab_owned_memory[i];
+ 		vm_page_create((ppnum_t)(d->physical >> PAGE_SHIFT),
+ 		    (ppnum_t)((d->physical + d->bytes) >> PAGE_SHIFT));
+ 		kebab_admitted_bytes += d->bytes;
+ 	}
++	kebab_early_mark(139, "xram admit: vm_page_create done");
+ 	kprintf("KEBAB XRAM: admitted=%llu tested=%llu banks=%u free_pages=%u page_bytes=%u\n",
+ 	    kebab_admitted_bytes, kebab_tested_bytes, kebab_owned_memory_count,
+ 	    vm_page_free_count, (unsigned)PAGE_SIZE);

@@ -1,0 +1,144 @@
+diff --git a/iokit/Kernel/IODeviceTreeSupport.cpp b/iokit/Kernel/IODeviceTreeSupport.cpp
+index ee5edb3..7948218 100644
+--- a/iokit/Kernel/IODeviceTreeSupport.cpp
++++ b/iokit/Kernel/IODeviceTreeSupport.cpp
+@@ -109,6 +109,27 @@ static bool IODTMapInterruptsSharing( IORegistryEntry * regEntry, OSDictionary *
+ // about releases after calls to 'attachToParent'.
+ // Feel free to remove the #ifndef and address the warning!
+ #ifndef __clang_analyzer__
++extern "C" void kebab_early_mark(unsigned, const char *);
++static unsigned kebab_dbg_nub;
++
++/* Per-node probes are only useful while bisecting IOKit; a normal boot should
++ * not pay for them (they write thousands of lines through the early console).
++ * Enable with the kebab-probe=1 boot argument. */
++static int kebab_probe_all = -1;
++static inline int
++kebab_probe_wanted(void)
++{
++	if (kebab_probe_all < 0) {
++		int v = 0;
++		extern int PE_parse_boot_argn(const char *arg_string, void *arg_ptr, int max_len);
++		PE_parse_boot_argn("kebab-probe", &v, sizeof(v));
++		kebab_probe_all = v ? 1 : 0;
++	}
++	return kebab_probe_all;
++}
++extern "C" void kebab_early_putc(char);
++extern "C" void kebab_early_hex(unsigned long long);
++
+ IORegistryEntry *
+ IODeviceTreeAlloc( void * dtTop )
+ {
+@@ -204,10 +225,65 @@ IODeviceTreeAlloc( void * dtTop )
+ 		stack->removeObject( stack->getCount() - 1);
+ 
+ 		while (kSuccess == SecureDTIterateEntries( &iter, &dtChild)) {
++			/*
++			 * KEBAB bring-up: IODeviceTreeAlloc never returns on this board, so
++			 * name every nub as it is built; the last line printed says which
++			 * device-tree node the registry walk stopped at.
++			 */
++			if (kebab_probe_wanted()) {
++				const void *kebab_name = NULL;
++				unsigned kebab_name_size = 0;
++				kebab_dbg_nub++;
++				kebab_early_mark(163, "IODeviceTreeAlloc: nub");
++				kebab_early_hex(kebab_dbg_nub);
++				if (kebab_dbg_nub >= 16) {
++					/* kprintf is suppressed in this phase, so draw the node name
++					 * through the early console: the last name on the panel is the
++					 * node MakeReferenceTable stopped on. */
++					const char *n = "?";
++					if ((kSuccess == SecureDTGetProperty(dtChild, "name", &kebab_name, &kebab_name_size)) &&
++					    (kebab_name != NULL)) {
++						n = (const char *)kebab_name;
++					}
++					kebab_early_putc(' ');
++					kebab_early_putc(':');
++					kebab_early_putc(' ');
++					while (*n != 0) {
++						kebab_early_putc(*n++);
++					}
++					kebab_early_putc('\n');
++				}
++			}
+ 			child = MakeReferenceTable( dtChild, freeDT );
++			if (kebab_probe_wanted()) {
++				/* Second half of the marker: if this line is missing for the node
++				 * whose "in" line is last, MakeReferenceTable is what hangs; if it
++				 * is present, the hang is in attachToParent/AddPHandle. */
++								const void *ok_name = NULL;
++				unsigned ok_size = 0;
++				const char *nm = "?";
++				if ((kSuccess == SecureDTGetProperty(dtChild, "name", &ok_name, &ok_size)) && ok_name) {
++					nm = (const char *)ok_name;
++				}
++				kebab_early_mark(164, "nub built");
++				kebab_early_putc(' ');
++				kebab_early_putc('o');
++				kebab_early_putc('k');
++				kebab_early_putc(' ');
++				while (*nm) {
++					kebab_early_putc(*nm++);
++				}
++				kebab_early_putc('\n');
++			}
+ 			child->attachToParent( parent, gIODTPlane);
++			if (kebab_probe_wanted() && kebab_dbg_nub >= 18) {
++				kebab_early_mark(165, "nub attached");
++			}
+ 
+ 			AddPHandle( child );
++			if (kebab_probe_wanted() && kebab_dbg_nub >= 18) {
++				kebab_early_mark(166, "nub phandle added");
++			}
+ 			// E.g. exp=sgx:3 or exp=sgx:3,5
+ 			if ((found = strnstr(exBootArg, child->getName(), sizeof(exBootArg)))) {
+ 				child->setProperty(gIOExclaveAssignedKey, kOSBooleanTrue);
+@@ -236,6 +312,7 @@ IODeviceTreeAlloc( void * dtTop )
+ 	} while (stack->getCount()
+ 	    && (kSuccess == SecureDTExitEntry( &iter, &dtChild)));
+ 
++	{ kebab_early_mark(167, "IODeviceTreeAlloc: stack released"); }
+ 	stack->release();
+ 	assert(kSuccess != SecureDTExitEntry(&iter, &dtChild));
+ 
+@@ -248,9 +325,11 @@ IODeviceTreeAlloc( void * dtTop )
+ 	}
+ 
+ 	// attach tree to meta root
++	{ kebab_early_mark(168, "IODeviceTreeAlloc: root attached to registry"); }
+ 	parent->attachToParent( IORegistryEntry::getRegistryRoot(), gIODTPlane);
+ 	parent->release();
+ 
++	{ kebab_early_mark(169, "IODeviceTreeAlloc: free loader DeviceTree next"); }
+ 	if (freeDT) {
+ 		// free original device tree
+ 		SecureDTInit(NULL, 0);
+@@ -266,8 +345,25 @@ IODeviceTreeAlloc( void * dtTop )
+ 	regIter = IORegistryIterator::iterateOver( gIODTPlane,
+ 	    kIORegistryIterateRecursively );
+ 	assert( regIter && allInts && gIODTSharedInterrupts );
++	{ kebab_early_mark(170, "IODeviceTreeAlloc: interrupt-sharing pass next"); }
+ 	if (regIter && allInts && gIODTSharedInterrupts) {
+ 		while ((child = regIter->getNextObject())) {
++			if (kebab_probe_wanted()) {
++				static unsigned kebab_reg_count;
++				kebab_reg_count++;
++				kebab_early_mark(171, "registry node visited");
++				kebab_early_hex(kebab_reg_count);
++				if (kebab_reg_count <= 8) {
++					const char *rn = child->getName();
++					kebab_early_putc(' ');
++					kebab_early_putc(':');
++					kebab_early_putc(' ');
++					while (rn != NULL && *rn != 0) {
++						kebab_early_putc(*rn++);
++					}
++					kebab_early_putc('\n');
++				}
++			}
+ 			IODTMapInterruptsSharing( child, allInts );
+ 			if (!intMap && child->getProperty( gIODTInterruptParentKey)) {
+ 				intMap = true;

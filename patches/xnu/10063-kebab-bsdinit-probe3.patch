@@ -1,0 +1,39 @@
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -950,6 +950,7 @@
+ 	 */
+ #include <loop.h>
+ #if NLOOP > 0
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(184, "bsd_init: bsd_autoconf done"); }
+ 	bsd_init_kprintf("calling loopattach\n");
+ 	loopattach();                   /* XXX */
+ #endif
+@@ -965,6 +966,7 @@
+ 
+ #if NETHER > 0
+ 	/* Register the built-in dlil ethernet interface family */
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(185, "bsd_init: loopattach done"); }
+ 	bsd_init_kprintf("calling ether_family_init\n");
+ 	ether_family_init();
+ #endif /* ETHER */
+@@ -1007,10 +1009,12 @@
+ 	 * The the networking stack is now initialized so it is a good time to call
+ 	 * the clients that are waiting for the networking stack to be usable.
+ 	 */
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(186, "bsd_init: ether_family_init done"); }
+ 	bsd_init_kprintf("calling net_init_run\n");
+ 	net_init_run();
+ #endif /* NETWORKING */
+ 
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(187, "bsd_init: net_init_run done"); }
+ 	bsd_init_kprintf("calling inittodr\n");
+ 	inittodr(0);
+ 
+@@ -1018,6 +1022,7 @@
+ 	while (TRUE) {
+ 		int err;
+ 
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(188, "bsd_init: inittodr done"); }
+ 		bsd_init_kprintf("calling setconf\n");
+ 		setconf();
+ #if CONFIG_NETBOOT

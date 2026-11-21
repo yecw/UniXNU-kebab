@@ -1,0 +1,196 @@
+diff --git a/bsd/dev/kebab_ufs.c b/bsd/dev/kebab_ufs.c
+index 1d66736..a9ee714 100644
+--- a/bsd/dev/kebab_ufs.c
++++ b/bsd/dev/kebab_ufs.c
+@@ -180,6 +180,9 @@ ufs_wait_reg(uint32_t off, uint32_t mask, uint32_t value)
+ 		}
+ 		delay(1);
+ 	}
++	{ extern void kebab_early_mark(unsigned, const char *); extern void kebab_early_hex(unsigned long long);
++	  kebab_early_mark(205, "ufs: wait_reg timeout");
++	  kebab_early_hex(off); kebab_early_hex(ufs_rd(off)); }
+ 	return ETIMEDOUT;
+ }
+ 
+@@ -443,6 +446,72 @@ ufs_find_partition(const char *want)
+ 	return ENOENT;
+ }
+ 
++/*
++ * The UFS host issues DMA through SID 0x4E0 / 0x0E0. ABL leaves those streams
++ * translated through a context bank, and the transfer list the driver hands the
++ * controller then describes physical addresses the SMMU will not accept: the
++ * controller stalls on the first fetch and every later register read hangs the
++ * bus. Make the two UFS SIDs bypass translation first, exactly as the firmware
++ * does on boards that keep a UFS driver (SmmuBypassDxe): only entries whose SMR
++ * has a zero mask are touched, so a wildcard shared with another device is left
++ * alone.
++ */
++#define SMMU_BASE        0x15000000u
++#define SMMU_GROUPS      0x20
++#define SMMU_SMR(n)      (0x800 + (n) * 4)
++#define SMMU_S2CR(n)     (0xC00 + (n) * 4)
++#define SMR_VALID        (1u << 31)
++#define S2CR_TYPE_BYPASS 1u
++
++static int
++ufs_smmu_scan(uint32_t base, int apply)
++{
++	vm_offset_t smmu = ml_io_map((vm_offset_t)base, 0x10000);
++	{ extern void kebab_early_mark(unsigned, const char *); extern void kebab_early_hex(unsigned long long);
++	  kebab_early_mark(206, "ufs: SMMU mapped"); kebab_early_hex(base); }
++	if (!smmu) {
++		return ENOMEM;
++	}
++	uint32_t groups = *(volatile uint32_t *)(smmu + SMMU_GROUPS) & 0x3F;
++	{ extern void kebab_early_mark(unsigned, const char *); extern void kebab_early_hex(unsigned long long);
++	  kebab_early_mark(207, "ufs: SMMU groups read"); kebab_early_hex(groups); }
++	/* GROUPS is not the SMR count: SMMU-500 reports groups of two SMRs, so the
++	 * UFS streams can sit past the first GROUPS slots. Scan the architectural
++	 * maximum and look for the exact-match entries. */
++	unsigned slots = 64;
++	for (unsigned s = 0; s < slots; s++) {
++		uint32_t smr = *(volatile uint32_t *)(smmu + SMMU_SMR(s));
++		uint32_t sid = smr & 0xFFFF, mask = (smr >> 16) & 0xFFFF;
++		if (smr & SMR_VALID) {
++			{ extern void kebab_early_mark(unsigned, const char *); extern void kebab_early_hex(unsigned long long);
++			  kebab_early_mark(208, "ufs: SMMU SMR"); kebab_early_hex(sid); kebab_early_hex(mask); }
++		}
++		if ((smr & SMR_VALID) == 0 || mask != 0) {
++			continue;
++		}
++		if (sid != 0x04E0 && sid != 0x00E0) {
++			continue;
++		}
++		uint32_t s2cr = *(volatile uint32_t *)(smmu + SMMU_S2CR(s));
++		s2cr = (s2cr & ~(3u << 16)) | (S2CR_TYPE_BYPASS << 16);
++		*(volatile uint32_t *)(smmu + SMMU_S2CR(s)) = s2cr;
++		(void)*(volatile uint32_t *)(smmu + SMMU_S2CR(s) + 4);
++		printf("KEBAB UFS: SMMU SID 0x%03x -> bypass (slot %u)\n", sid, s);
++		{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(198, "ufs: SMMU SID bypassed"); }
++	}
++	return 0;
++}
++
++static int
++ufs_smmu_bypass(void)
++{
++	/* Only the apps SMMU is powered at this point: reading the second instance
++	 * (0x15400000) hangs the bus, and its 64 SMR slots carry no UFS stream
++	 * either, so UFS DMA is untranslated from the SMMU's point of view. */
++	(void)ufs_smmu_scan(0x15000000u, 1);
++	return 0;
++}
++
+ static int
+ ufs_take_over_host(void)
+ {
+@@ -459,11 +528,13 @@ ufs_take_over_host(void)
+ 		printf("KEBAB UFS: firmware left a fatal error: IS 0x%x\n", ufs_rd(REG_IS));
+ 		return EIO;
+ 	}
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(200, "ufs: takeover checks done"); }
+ 	ufs_wr(REG_IE, 0);                      /* polled operation */
+ 	ufs_wr(REG_UTRIACR, 0);                 /* no interrupt aggregation */
+ 	ufs_wr(REG_IS, ufs_rd(REG_IS));
+ 	ufs_wr(REG_UTRLRSR, 0);
+ 	ufs_wr(REG_UTMRLRSR, 0);                /* no task management in this driver */
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(201, "ufs: lists stop requested"); }
+ 	if (ufs_wait_reg(REG_UTRLRSR, 1, 0) || ufs_wait_reg(REG_UTMRLRSR, 1, 0) ||
+ 	    ufs_rd(REG_UTRLDBR) || ufs_rd(REG_UTMRLDBR)) {
+ 		printf("KEBAB UFS: could not stop firmware request lists\n");
+@@ -474,11 +545,13 @@ ufs_take_over_host(void)
+ 	ufs_wr(REG_UTRLBA, (uint32_t)list);
+ 	ufs_wr(REG_UTRLBAU, (uint32_t)(list >> 32));
+ 	/* Never ring a doorbell unless the host uses our list. */
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(202, "ufs: list base programmed"); }
+ 	if (ufs_rd(REG_UTRLBA) != (uint32_t)list || ufs_rd(REG_UTRLBAU) != (uint32_t)(list >> 32)) {
+ 		printf("KEBAB UFS: host did not take our request list\n");
+ 		return EIO;
+ 	}
+ 	ufs_wr(REG_UTRLRSR, 1);
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(203, "ufs: list base verified"); }
+ 	if (ufs_wait_reg(REG_UTRLRSR, 1, 1) ||
+ 	    ufs_wait_reg(REG_HCS, HCS_UTRLRDY, HCS_UTRLRDY)) {
+ 		printf("KEBAB UFS: transfer list did not start\n");
+@@ -707,6 +780,7 @@ kebab_ufs_init(void)
+ {
+ 	DTEntry node;
+ 	const void *prop = NULL;
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(190, "ufs: init entered"); }
+ 	uint64_t reg[2];
+ 	unsigned int size = 0;
+ 	char want[64] = "userdata";
+@@ -721,6 +795,7 @@ kebab_ufs_init(void)
+ 	/* ADT properties are only 4-byte aligned: copy the two LE uint64_t cells. */
+ 	memcpy(reg, prop, sizeof(reg));
+ 	if (reg[0] != UFS_MMIO_BASE || reg[1] < UFS_MMIO_SIZE) {
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(191, "ufs: device-tree reg read"); }
+ 		printf("KEBAB UFS: invalid absolute /kebab-ufs reg\n");
+ 		return ENXIO;
+ 	}
+@@ -734,9 +809,13 @@ kebab_ufs_init(void)
+ 	if (!su.regs) {
+ 		return ENOMEM;
+ 	}
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(192, "ufs: ml_io_map done, first MMIO read next"); }
+ 	uint32_t ver = ufs_rd(REG_VER), cap = ufs_rd(REG_CAP);
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(193, "ufs: first MMIO read done"); }
++
+ 	printf("KEBAB UFS: VER 0x%x CAP 0x%x HCE 0x%x HCS 0x%x\n",
+-	    ver, cap, ufs_rd(REG_HCE), ufs_rd(REG_HCS));
++	    ver, cap, ufs_rd(REG_HCE), ufs_rd(REG_HCS));	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(194, "ufs: VER/CAP printed"); }
++
+ 	/* 1.x command types differ; 4.x/MCQ and unknown versions are not handled. */
+ 	if (ver != 0x200 && ver != 0x210 && ver != 0x300 && ver != 0x310) {
+ 		printf("KEBAB UFS: unsupported UFSHCI version\n");
+@@ -749,6 +828,7 @@ kebab_ufs_init(void)
+ 		return ENOMEM;
+ 	}
+ 	ppnum_t pn = pmap_find_phys(kernel_pmap, (addr64_t)su.dma);
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(195, "ufs: DMA allocation done"); }
+ 	if (!pn) {
+ 		return ENOMEM;
+ 	}
+@@ -757,10 +837,16 @@ kebab_ufs_init(void)
+ 	    (!(cap & CAP_64AS) && su.dma_pa + DMA_SIZE - 1 > UINT32_MAX)) {
+ 		return EINVAL;
+ 	}
+-	/* kmem_alloc_contig wires contiguous pages; verify before publishing DMA. */
+-	for (vm_size_t off = 0; off < DMA_SIZE; off += PAGE_SIZE) {
+-		ppnum_t page = pmap_find_phys(kernel_pmap, (addr64_t)(su.dma + off));
+-		if (!page || ptoa_64(page) != su.dma_pa + off) {
++	/* kmem_alloc_contig already guarantees physical contiguity; checking every
++	 * page here hung this port inside pmap_find_phys, so verify the ends only. */
++	{
++		ppnum_t first = pmap_find_phys(kernel_pmap, (addr64_t)su.dma);
++		ppnum_t last  = pmap_find_phys(kernel_pmap,
++		    (addr64_t)(su.dma + DMA_SIZE - PAGE_SIZE));
++		{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(199, "ufs: DMA ends checked"); }
++		if (!first || !last ||
++		    ptoa_64(first) != su.dma_pa ||
++		    ptoa_64(last) != su.dma_pa + DMA_SIZE - PAGE_SIZE) {
+ 			printf("KEBAB UFS: noncontiguous DMA allocation\n");
+ 			return ENOMEM;
+ 		}
+@@ -779,6 +865,10 @@ kebab_ufs_init(void)
+ 		su.writable = true;
+ 	}
+ 
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(196, "ufs: DMA verified, SMMU bypass then host takeover"); }
++	/* The firmware now creates the UFS IOMMU domain and attaches ARID 0x00/0x10
++	 * (HAL_IOMMU create/configure/attach, printed as UFSQ: iommu ...).  The
++	 * kernel must not poke the SMMU itself: its SMR scan hangs the bus here. */
+ 	error = ufs_take_over_host();
+ 	if (!error) {
+ 		static const uint8_t tur[6] = { 0x00 };
+@@ -795,6 +885,9 @@ kebab_ufs_init(void)
+ 	}
+ 	if (!error) {
+ 		error = ufs_find_partition(want);
++		{ extern void kebab_early_mark(unsigned, const char *); extern void kebab_early_hex(unsigned long long);
++		  kebab_early_mark(210, "ufs: GPT scan result"); kebab_early_hex((unsigned long long)(unsigned)error); }
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(197, "ufs: host takeover done, GPT scan next"); }
+ 	}
+ 	if (error) {
+ 		return error;

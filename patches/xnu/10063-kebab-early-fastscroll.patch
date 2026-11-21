@@ -1,0 +1,18 @@
+--- a/osfmk/arm64/kebab_early.c
++++ b/osfmk/arm64/kebab_early.c
+@@ -18,10 +18,13 @@
+ #define EARLY_WIDTH 1080u
+ #define EARLY_HEIGHT 2400u
+ #define EARLY_STRIDE (4320u / 4)
+-#define EARLY_SCALE 2u
++#define EARLY_SCALE 1u
+ #define EARLY_CELL_W (8u * EARLY_SCALE)
+ #define EARLY_CELL_H (16u * EARLY_SCALE)
+-#define EARLY_ROWS ((EARLY_HEIGHT - 32u) / EARLY_CELL_H)
++/* Only 60 rows scroll: the copy is proportional to the text area, and at scale 2
++ * the full-height scroll moved about 38 MB per line, which made the console crawl
++ * exactly when the interesting lines arrived. */
++#define EARLY_ROWS (((EARLY_HEIGHT - 32u) / EARLY_CELL_H) < 60u ? ((EARLY_HEIGHT - 32u) / EARLY_CELL_H) : 60u)
+ #define EARLY_COLS (EARLY_WIDTH / EARLY_CELL_W)
+ /* The console starts at text row 4 so its output clears the camera punch-hole. */
+ #define EARLY_TOP_ROW 4u

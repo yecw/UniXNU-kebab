@@ -1,0 +1,28 @@
+--- a/iokit/Kernel/IOStartIOKit.cpp
++++ b/iokit/Kernel/IOStartIOKit.cpp
+@@ -144,13 +144,17 @@
+ 	// initialise as basic OS services.
+ 	//
+ 	IOLibInit();
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(156, "InitIOKit: IOLibInit done"); }
+ 	OSlibkernInit();
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(157, "InitIOKit: OSlibkernInit done"); }
+ 	IOMachPortInitialize();
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(158, "InitIOKit: IOMachPortInitialize done"); }
+ 
+ 	gIOProgressBackbufferKey  = OSSymbol::withCStringNoCopy(kIOProgressBackbufferKey);
+ 	gIORemoveOnReadProperties = OSSet::withObjects((const OSObject **) &gIOProgressBackbufferKey, 1);
+ 
+ 	interruptAccountingInit();
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(159, "InitIOKit: interruptAccountingInit done"); }
+ 
+ 	gRootNub = new IOPlatformExpertDevice;
+ 	if (__improbable(gRootNub == NULL)) {
+@@ -161,6 +165,7 @@
+ 		panic("Failed to initialize IOKit root nub");
+ 	}
+ 	gRootNub->attach(NULL);
++	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(160, "InitIOKit: root nub init+attach done"); }
+ 
+ 	/* If the bootstrap segment set up a function to record startup
+ 	 * extensions, call it now.
