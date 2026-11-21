@@ -1,0 +1,11 @@
+--- a/iokit/bsddev/IOKitBSDInit.cpp
++++ b/iokit/bsddev/IOKitBSDInit.cpp
+@@ -770,6 +770,8 @@
+ 		    strcmp(earlyRd, "ufsroot0") == 0) {
+ 			int ufs_error = kebab_ufs_rootdev(root);
+ 			if (ufs_error) {
++				{ extern void kebab_early_mark(unsigned, const char *); extern void kebab_early_hex(unsigned long long);
++				  kebab_early_mark(216, "IOFindBSDRoot: ufs error"); kebab_early_hex((unsigned long long)(unsigned)ufs_error); }
+ 				panic("IOFindBSDRoot: KEBAB UFS root %s unavailable: %d",
+ 				    earlyRd, ufs_error);
+ 			}

@@ -98,3 +98,4 @@ pending/adapt-0367-after-0366.patch
 10063-kebab-bsdinit-probe3.patch
 10063-kebab-ufs-probe.patch
 10063-kebab-mountroot-probe.patch
+10063-kebab-rooterr-probe.patch
