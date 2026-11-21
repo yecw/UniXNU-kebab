@@ -150,6 +150,7 @@ kernel_args = [
   # Qualcomm never raises the SGIs that ICC_SGI1R_EL1 asks for, so IPIs have to be
   # software-pended SPIs (pipa and gts7xlwifi records, UniXNU boot-argument reference).
   "debug=0x14e",
+  "kextlog=0xffff",
   "armcpu-self-ipi=1",
   "armcpu-spi-ipi=1",
   "armcpu-diagnostics=1",

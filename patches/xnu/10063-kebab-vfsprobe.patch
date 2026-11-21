@@ -1,0 +1,26 @@
+--- a/bsd/vfs/vfs_subr.c
++++ b/bsd/vfs/vfs_subr.c
+@@ -1250,6 +1250,23 @@
+ 	bdevvp_rootvp = rootvp;
+ 
+ 	for (vfsp = vfsconf; vfsp; vfsp = vfsp->vfc_next) {
++		{
++			/* Every registered filesystem, including the ones the loop skips. */
++			extern void kebab_early_mark(unsigned, const char *);
++			extern void kebab_early_putc(char);
++			extern void kebab_early_hex(unsigned long long);
++			const char *name = vfsp->vfc_name;
++
++			kebab_early_mark(223, "vfs_mountroot: fs");
++			kebab_early_putc(' ');
++			while (name != NULL && *name != 0) {
++				kebab_early_putc(*name++);
++			}
++			kebab_early_putc(' ');
++			kebab_early_hex((unsigned long long)(uintptr_t)vfsp->vfc_mountroot);
++			kebab_early_putc(' ');
++			kebab_early_hex((unsigned long long)(unsigned)vfsp->vfc_vfsflags);
++		}
+ 		if (vfsp->vfc_mountroot == NULL
+ 		    && !ISSET(vfsp->vfc_vfsflags, VFC_VFSCANMOUNTROOT)) {
+ 			continue;
