@@ -1,5 +1,5 @@
 diff --git a/bsd/dev/kebab_ufs.c b/bsd/dev/kebab_ufs.c
-index 1d66736..a9ee714 100644
+index 1d66736..8562a67 100644
 --- a/bsd/dev/kebab_ufs.c
 +++ b/bsd/dev/kebab_ufs.c
 @@ -180,6 +180,9 @@ ufs_wait_reg(uint32_t off, uint32_t mask, uint32_t value)
@@ -113,7 +113,85 @@ index 1d66736..a9ee714 100644
  	if (ufs_wait_reg(REG_UTRLRSR, 1, 1) ||
  	    ufs_wait_reg(REG_HCS, HCS_UTRLRDY, HCS_UTRLRDY)) {
  		printf("KEBAB UFS: transfer list did not start\n");
-@@ -707,6 +780,7 @@ kebab_ufs_init(void)
+@@ -702,11 +775,85 @@ static const struct cdevsw kebab_ufs_cdevsw = {
+ 	.d_type       = D_DISK,
+ };
+ 
++
++/*
++ * The flashed root image is not a filesystem: it starts with the SHNGROOT
++ * manifest that lists the IPSW's OS and SystemOS images as windows
++ * (unixnu userdata writes it).  Read the manifest from the partition's first
++ * 4 KiB block and narrow the BSD disk to the "OS" window, so APFS sees the
++ * OS image's own APFS container instead of the manifest.
++ */
++#define MANIFEST_HEADER 24
++#define MANIFEST_ENTRY  128
++
++static uint32_t
++ufs_le32(const uint8_t *at)
++{
++	return (uint32_t)at[0] | ((uint32_t)at[1] << 8) | ((uint32_t)at[2] << 16) | ((uint32_t)at[3] << 24);
++}
++
++static uint64_t
++ufs_le64(const uint8_t *at)
++{
++	return (uint64_t)ufs_le32(at) | ((uint64_t)ufs_le32(at + 4) << 32);
++}
++
++static int
++ufs_apply_manifest(void)
++{
++	uint8_t *block = (uint8_t *)(su.dma + DMA_BOUNCE);
++	uint64_t part_bytes = su.nblocks * UFS_BLOCK;
++	uint64_t offset = 0, size = 0;
++	uint32_t version, count;
++	int error;
++
++	error = ufs_read_blocks(su.first_block, 1);
++	if (error) {
++		return 0;                       /* keep the raw partition */
++	}
++	if (memcmp(block, "SHNGROOT", 8) != 0) {
++		printf("KEBAB UFS: no SHNGROOT manifest, using the whole partition\n");
++		return 0;
++	}
++	version = ufs_le32(block + 8);
++	count   = ufs_le32(block + 12);
++	printf("KEBAB UFS: SHNGROOT v%u windows=%u\n", version, count);
++	if (version < 1 || version > 2 || count == 0 || count > 8 ||
++	    MANIFEST_HEADER + (uint64_t)count * MANIFEST_ENTRY > UFS_BLOCK) {
++		return EINVAL;
++	}
++	for (uint32_t i = 0; i < count; i++) {
++		const uint8_t *entry = block + MANIFEST_HEADER + (uint64_t)i * MANIFEST_ENTRY;
++		if (strncmp((const char *)entry, "OS", sizeof("OS")) == 0 && entry[2] == 0) {
++			offset = ufs_le64(entry + 32);
++			size   = ufs_le64(entry + 40);
++		}
++	}
++	if (size == 0) {
++		printf("KEBAB UFS: manifest has no OS window\n");
++		return ENXIO;
++	}
++	if ((offset % UFS_BLOCK) || (size % UFS_BLOCK) || offset > part_bytes ||
++	    size > part_bytes - offset) {
++		printf("KEBAB UFS: OS window outside the partition (off 0x%llx size 0x%llx)\n",
++		    offset, size);
++		return EINVAL;
++	}
++	su.first_block += offset / UFS_BLOCK;
++	su.nblocks     = size / UFS_BLOCK;
++	{ extern void kebab_early_mark(unsigned, const char *); extern void kebab_early_hex(unsigned long long);
++	  kebab_early_mark(214, "ufs: OS window"); kebab_early_hex(offset); kebab_early_hex(size); }
++	printf("KEBAB UFS: OS window off 0x%llx size 0x%llx, BSD disk on the OS image\n",
++	    offset, size);
++	return 0;
++}
++
+ static int
+ kebab_ufs_init(void)
  {
  	DTEntry node;
  	const void *prop = NULL;
@@ -121,7 +199,7 @@ index 1d66736..a9ee714 100644
  	uint64_t reg[2];
  	unsigned int size = 0;
  	char want[64] = "userdata";
-@@ -721,6 +795,7 @@ kebab_ufs_init(void)
+@@ -721,6 +868,7 @@ kebab_ufs_init(void)
  	/* ADT properties are only 4-byte aligned: copy the two LE uint64_t cells. */
  	memcpy(reg, prop, sizeof(reg));
  	if (reg[0] != UFS_MMIO_BASE || reg[1] < UFS_MMIO_SIZE) {
@@ -129,7 +207,7 @@ index 1d66736..a9ee714 100644
  		printf("KEBAB UFS: invalid absolute /kebab-ufs reg\n");
  		return ENXIO;
  	}
-@@ -734,9 +809,13 @@ kebab_ufs_init(void)
+@@ -734,9 +882,13 @@ kebab_ufs_init(void)
  	if (!su.regs) {
  		return ENOMEM;
  	}
@@ -144,7 +222,7 @@ index 1d66736..a9ee714 100644
  	/* 1.x command types differ; 4.x/MCQ and unknown versions are not handled. */
  	if (ver != 0x200 && ver != 0x210 && ver != 0x300 && ver != 0x310) {
  		printf("KEBAB UFS: unsupported UFSHCI version\n");
-@@ -749,6 +828,7 @@ kebab_ufs_init(void)
+@@ -749,6 +901,7 @@ kebab_ufs_init(void)
  		return ENOMEM;
  	}
  	ppnum_t pn = pmap_find_phys(kernel_pmap, (addr64_t)su.dma);
@@ -152,7 +230,7 @@ index 1d66736..a9ee714 100644
  	if (!pn) {
  		return ENOMEM;
  	}
-@@ -757,10 +837,16 @@ kebab_ufs_init(void)
+@@ -757,10 +910,16 @@ kebab_ufs_init(void)
  	    (!(cap & CAP_64AS) && su.dma_pa + DMA_SIZE - 1 > UINT32_MAX)) {
  		return EINVAL;
  	}
@@ -173,7 +251,7 @@ index 1d66736..a9ee714 100644
  			printf("KEBAB UFS: noncontiguous DMA allocation\n");
  			return ENOMEM;
  		}
-@@ -779,6 +865,10 @@ kebab_ufs_init(void)
+@@ -779,6 +938,10 @@ kebab_ufs_init(void)
  		su.writable = true;
  	}
  
@@ -184,10 +262,13 @@ index 1d66736..a9ee714 100644
  	error = ufs_take_over_host();
  	if (!error) {
  		static const uint8_t tur[6] = { 0x00 };
-@@ -795,6 +885,9 @@ kebab_ufs_init(void)
+@@ -795,6 +958,12 @@ kebab_ufs_init(void)
  	}
  	if (!error) {
  		error = ufs_find_partition(want);
++		if (!error) {
++			error = ufs_apply_manifest();
++		}
 +		{ extern void kebab_early_mark(unsigned, const char *); extern void kebab_early_hex(unsigned long long);
 +		  kebab_early_mark(210, "ufs: GPT scan result"); kebab_early_hex((unsigned long long)(unsigned)error); }
 +	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(197, "ufs: host takeover done, GPT scan next"); }
