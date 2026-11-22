@@ -106,3 +106,5 @@ pending/adapt-0367-after-0366.patch
 10063-kebab-ufs-media-root.patch
 10063-kebab-rootmatch-probe.patch
 10063-kebab-unsealed-root.patch
+10063-kebab-postmount-probe.patch
+10063-kebab-postmount-probe2.patch

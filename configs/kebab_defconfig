@@ -29,7 +29,7 @@ CONFIG_XNU_NATIVE_VIRTIO_BLOCK=n
 CONFIG_XNU_NATIVE_RAM_BLOCK=n
 CONFIG_XNU_NATIVE_LEGACY_DISPLAY=n
 CONFIG_XNU_NATIVE_ADRENO=n
-CONFIG_XNU_TRUST_CACHE_RUNTIME=n
+CONFIG_XNU_TRUST_CACHE_RUNTIME=y
 CONFIG_XNU_VERIFIED_ROOT_PROBE=n
 # Boot progress: the kernel log goes to the stock ramoops zone (0xB0000000)
 # through kits/kebab/BootRamoops.c and scripts/build-boot-progress.py.

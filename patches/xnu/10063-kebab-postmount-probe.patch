@@ -1,0 +1,26 @@
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -1181,11 +1181,23 @@
+ 	}
+ 
+ #endif /* CONFIG_IMAGEBOOT */
+ 
++#if defined(KEBAB)
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		kebab_early_mark(245, "bsd_init: imageboot done");
++	}
++#endif
+ 	/* set initial time; all other resource data is  already zero'ed */
+ 	microtime_with_abstime(&kernproc->p_start, &kernproc->p_stats->ps_start);
+ 
++#if defined(KEBAB)
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		kebab_early_mark(244, "bsd_init: before devfs mount");
++	}
++#endif
+ #if DEVFS
+ 	{
+ 		char mounthere[] = "/dev"; /* !const because of internal casting */
+ 

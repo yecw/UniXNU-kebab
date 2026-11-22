@@ -1,0 +1,17 @@
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -1203,8 +1203,14 @@
+ 
+ 		bsd_init_kprintf("calling devfs_kernel_mount\n");
+ 		devfs_kernel_mount(mounthere);
+ 	}
++#if defined(KEBAB)
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		kebab_early_mark(246, "bsd_init: devfs mounted");
++	}
++#endif
+ #endif /* DEVFS */
+ 
+ #if CONFIG_BASESYSTEMROOT
+ #if CONFIG_IMAGEBOOT
