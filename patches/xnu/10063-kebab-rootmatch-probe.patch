@@ -1,0 +1,49 @@
+--- a/iokit/bsddev/IOKitBSDInit.cpp
++++ b/iokit/bsddev/IOKitBSDInit.cpp
+@@ -1073,8 +1073,20 @@
+ 		service = NULL;
+ 	}
+ 
+ 	if (service) {
++#if defined(__arm64__)
++		/* The APFS volume BSD client attaches after the media is registered
++		 * and assigns BSD Major in its start(); makedev(0, 0) would give
++		 * bdevvp() a device that does not exist. */
++		for (int kebab_attempt = 0; kebab_attempt < 50; kebab_attempt++) {
++			if (service->getProperty(kIOBSDMajorKey) != NULL) {
++				break;
++			}
++			IOSleep(100);
++		}
++#endif
++
+ 		len = kMaxPathBuf;
+ 		service->getPath( str.data(), &len, gIOServicePlane );
+ 		IOLog("Got boot device = %s\n", str.data());
+ 
+@@ -1106,9 +1118,25 @@
+ 	} else {
+ 		IOLog("\n");
+ 	}
+ 
++#if defined(__arm64__)
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		kebab_early_mark(240, "IOFindBSDRoot: matched");
++		kebab_early_hex((unsigned long long)(uintptr_t)service);
++	}
++#endif
+ 	*root = makedev( mjr, mnr );
++#if defined(__arm64__)
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		kebab_early_mark(242, "IOFindBSDRoot: rootdev");
++		kebab_early_hex((unsigned long long)(unsigned)*root);
++	}
++#endif
+ 	*oflags = flags;
+ 
+ iofrootx:
+ 

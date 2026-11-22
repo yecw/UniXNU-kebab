@@ -1,0 +1,19 @@
+--- a/bsd/vfs/vfs_subr.c
++++ b/bsd/vfs/vfs_subr.c
+@@ -1280,8 +1280,16 @@
+ 		} else {
+ 			error = VFS_MOUNT(mp, rootvp, 0, ctx);
+ 		}
+ 
++		{
++			/* The real return code of each filesystem, including apfs. */
++			extern void kebab_early_mark(unsigned, const char *);
++			extern void kebab_early_hex(unsigned long long);
++			kebab_early_mark(222, "vfs_mountroot: fs result");
++			kebab_early_hex((unsigned long long)(unsigned)error);
++		}
++
+ 		if (!error) {
+ 			if (bdevvp_rootvp != rootvp) {
+ 				/*
+ 				 * rootvp changed...

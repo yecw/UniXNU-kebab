@@ -101,4 +101,8 @@ pending/adapt-0367-after-0366.patch
 10063-kebab-mountroot-probe.patch
 10063-kebab-rooterr-probe.patch
 10063-kebab-vfsprobe.patch
+10063-kebab-vfs-error.patch
 10063-kebab-ipi-noop.patch
+10063-kebab-ufs-media-root.patch
+10063-kebab-rootmatch-probe.patch
+10063-kebab-unsealed-root.patch

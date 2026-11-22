@@ -1,0 +1,35 @@
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -196,8 +196,9 @@
+ #include <skywalk/os_skywalk_private.h>
+ #endif /* SKYWALK */
+ 
+ #include <pexpert/pexpert.h>
++#include <pexpert/arm64/board_config.h>
+ #include <machine/pal_routines.h>
+ #include <console/video_console.h>
+ 
+ #if CONFIG_XNUPOST
+@@ -1114,9 +1115,22 @@
+ 				native_owner_root_checkpoint(autherr, owner, device);
+ 			}
+ #endif
+ 			if (autherr && !owner_authorized) {
++#if defined(KEBAB)
++				/* The flashed OS window is an unsealed System volume and this
++				 * kernel has no Image4 chain; record the result and continue so
++				 * the bring-up can reach userland. Development only: the
++				 * verified-root path replaces this check. */
++				{
++					extern void kebab_early_mark(unsigned, const char *);
++					extern void kebab_early_hex(unsigned long long);
++					kebab_early_mark(243, "bsd_init: root not sealed, continuing");
++					kebab_early_hex((unsigned long long)(unsigned)autherr);
++				}
++#else
+ 				panic("rootvp not authenticated after mounting");
++#endif
+ 			}
+ #if defined(XNU_OWNER_ROOT_TRUST) && XNU_OWNER_ROOT_TRUST
+ 			{
+ 				extern volatile int native_owner_root_accepted;

@@ -1,0 +1,65 @@
+--- a/iokit/bsddev/IOKitBSDInit.cpp
++++ b/iokit/bsddev/IOKitBSDInit.cpp
+@@ -730,8 +730,13 @@
+ 
+ 	return true;
+ }
+ 
++#if defined(__arm64__)
++/* Set when ufsmedia_root=2: UFS is up and the matcher picks the APFS volume. */
++static int kebab_media_root;
++#endif
++
+ kern_return_t
+ IOFindBSDRoot( char * rootName, unsigned int rootNameSize,
+     dev_t * root, u_int32_t * oflags )
+ {
+@@ -767,9 +772,23 @@
+ 	{
+ 		char earlyRd[kMaxBootVar];
+ 		if (PE_parse_boot_argn("rd", earlyRd, sizeof(earlyRd)) &&
+ 		    strcmp(earlyRd, "ufsroot0") == 0) {
++			uint32_t media_root = 0;
+ 			int ufs_error = kebab_ufs_rootdev(root);
++			PE_parse_boot_argn("ufsmedia_root", &media_root, sizeof(media_root));
++			if (media_root == 2) {
++				/* ufsmedia_root=2: the UFS driver only initialized the
++				 * controller and published its IOMedia. Let the ordinary
++				 * matcher select the APFS volume through
++				 * /chosen/root-matching instead of short-circuiting to the
++				 * bare BSD disk. */
++				if (ufs_error) {
++					panic("IOFindBSDRoot: KEBAB UFS provider unavailable: %d", ufs_error);
++				}
++				kebab_media_root = 1;
++				goto kebab_skip_early_root;
++			}
+ 			if (ufs_error) {
+ 				{ extern void kebab_early_mark(unsigned, const char *); extern void kebab_early_hex(unsigned long long);
+ 				  kebab_early_mark(216, "IOFindBSDRoot: ufs error"); kebab_early_hex((unsigned long long)(unsigned)ufs_error); }
+ 				panic("IOFindBSDRoot: KEBAB UFS root %s unavailable: %d",
+@@ -779,8 +798,10 @@
+ 			IOLog("BSD root: %s, major %d, minor %d\n", rootName,
+ 			    major(*root), minor(*root));
+ 			*oflags = 0;
+ 			return kIOReturnSuccess;
++kebab_skip_early_root:
++			;
+ 		}
+ 	}
+ #endif
+ 
+@@ -813,10 +834,11 @@
+ 		rdBootVar[0] = 0;
+ 	}
+ 
+ #if defined(__arm64__)
+-	/* This BSD disk does not publish an IOMedia; rd= overrides root-matching. */
+-	if (strcmp(rdBootVar, "ufsroot0") == 0) {
++	/* This BSD disk does not publish an IOMedia; rd= overrides root-matching.
++	 * ufsmedia_root=2 already initialized UFS and wants the matcher below. */
++	if (!kebab_media_root && strcmp(rdBootVar, "ufsroot0") == 0) {
+ 		OSSafeReleaseNULL(matching);
+ 		int ufs_error = kebab_ufs_rootdev(root);
+ 		if (ufs_error) {
+ 			panic("IOFindBSDRoot: KEBAB UFS root %s unavailable: %d", rdBootVar, ufs_error);
