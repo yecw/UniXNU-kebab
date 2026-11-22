@@ -1,0 +1,25 @@
+--- a/osfmk/arm64/machine_routines.c
++++ b/osfmk/arm64/machine_routines.c
+@@ -246,9 +246,21 @@
+ {
+ #if defined(HAS_IPI)
+ 	ml_cpu_signal_type(cpu_mpidr, ARM64_REG_IPI_RR_TYPE_IMMEDIATE);
+ #else
+-	panic("Platform does not support ACC Fast IPI");
++	/* KEBAB: the Apple IPI registers this path would use do not exist here, and
++	 * the port still runs effectively single-core. Record the request instead
++	 * of panicking; a wakeup that crosses CPUs is not yet supported. */
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		static bool reported;
++		if (!reported) {
++			reported = true;
++			kebab_early_mark(231, "ipi: ml_cpu_signal ignored");
++			kebab_early_hex((unsigned long long)cpu_mpidr);
++		}
++	}
+ #endif
+ }
+ 
+ #if !defined(HAS_IPI)

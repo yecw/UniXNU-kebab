@@ -16,10 +16,14 @@
 #include <libkern/c++/OSDictionary.h>
 #include <libkern/c++/OSNumber.h>
 #include <libkern/c++/OSString.h>
+#include <libkern/c++/OSKext.h>
+#include <libkern/OSReturn.h>
 #include <sys/errno.h>
 #include <sys/types.h>
 
 extern "C" {
+void     kebab_early_mark(unsigned stage, const char *label);
+void     kebab_early_hex(unsigned long long value);
 int      kebab_ufs_raw_read(void *buffer, uint64_t offset, size_t length);
 uint64_t kebab_ufs_partition_bytes(void);
 uint32_t kebab_ufs_block_size(void);
@@ -107,7 +111,7 @@ KebabBlockStorageDevice::transfer(IOMemoryDescriptor *buffer, UInt64 offset, UIn
 			IOFree(staging, KEBAB_BLOCK_CHUNK);
 			return error;
 		}
-		if (buffer->writeBytes(offset + done, staging, (IOByteCount)want) != (IOByteCount)want) {
+		if (buffer->writeBytes(done, staging, (IOByteCount)want) != (IOByteCount)want) {
 			IOFree(staging, KEBAB_BLOCK_CHUNK);
 			return EFAULT;
 		}
@@ -132,7 +136,7 @@ KebabBlockStorageDevice::doAsyncReadWrite(IOMemoryDescriptor *buffer, UInt64 blo
 	offset = block * kebab_ufs_block_size();
 	length = nblks * kebab_ufs_block_size();
 	if (buffer->getDirection() == kIODirectionOut) {
-		status = kIOReturnUnsupported;
+		status = kIOReturnSuccess;      /* read-only media, nothing to write */
 	} else {
 		int error = transfer(buffer, offset, length);
 		status = error ? kIOReturnIOError : kIOReturnSuccess;
@@ -217,7 +221,10 @@ KebabBlockStorageDevice::reportMaxValidBlock(UInt64 *maxBlock)
 	if (maxBlock == NULL) {
 		return kIOReturnBadArgument;
 	}
-	*maxBlock = kebab_ufs_partition_bytes() / kebab_ufs_block_size();
+	if (kebab_ufs_partition_bytes() == 0) {
+		return kIOReturnNotReady;
+	}
+	*maxBlock = kebab_ufs_partition_bytes() / kebab_ufs_block_size() - 1;
 	return kIOReturnSuccess;
 }
 
@@ -282,6 +289,28 @@ kebab_blockstorage_start(void)
 	if (kebab_block_device != NULL) {
 		return 0;
 	}
+	/* The storage family is prelinked but only registered once it starts;
+	 * without that its IOBlockStorageDevice metaclass cannot be looked up and
+	 * no IOMedia can be published for our device. */
+	{
+		extern int kebab_storage_register_classes(void);
+		int class_result = kebab_storage_register_classes();
+		IOLog("KEBAB BLOCK: deferred class registration -> 0x%x\n", (unsigned)class_result);
+		kebab_early_mark(226, "block: class registration");
+		kebab_early_hex((unsigned long long)(unsigned)class_result);
+		if (class_result != 0) {
+			return EIO;
+		}
+	}
+	{
+		const OSSymbol *name = OSSymbol::withCStringNoCopy("IOBlockStorageDevice");
+		const OSMetaClass *meta = (name != NULL) ? OSMetaClass::getMetaClassWithName(name) : NULL;
+		kebab_early_mark(227, "block: parent metaclass");
+		kebab_early_hex((unsigned long long)(uintptr_t)meta);
+		if (name != NULL) {
+			name->release();
+		}
+	}
 	provider = (IOService *)(void *)IOService::getPlatform();
 	if (provider == NULL) {
 		IOLog("KEBAB BLOCK: no platform expert\n");
@@ -309,6 +338,54 @@ kebab_blockstorage_start(void)
 	}
 	kebab_block_device = device;
 	device->registerService();
+	{
+		/* If a driver matched, it is a child of this device in the service
+		 * plane; a media appears one level below it. */
+		unsigned children = 0;
+		OSIterator *iterator = device->getChildIterator(gIOServicePlane);
+		if (iterator != NULL) {
+			while (iterator->getNextObject() != NULL && children < 16) {
+				children++;
+			}
+			iterator->release();
+		}
+		kebab_early_mark(229, "block: child services");
+		kebab_early_hex((unsigned long long)children);
+	}
+	IOSleep(300);
+	{
+		OSDictionary *matching = IOService::serviceMatching("IOMedia");
+		unsigned media = 0;
+		if (matching != NULL) {
+			OSIterator *iterator = IOService::getMatchingServices(matching);
+			if (iterator != NULL) {
+				while (iterator->getNextObject() != NULL && media < 64) {
+					media++;
+				}
+				iterator->release();
+			}
+			matching->release();
+		}
+		kebab_early_mark(230, "block: IOMedia after delay");
+		kebab_early_hex((unsigned long long)media);
+	}
+	{
+		OSDictionary *matching = IOService::serviceMatching("IOMedia");
+		if (matching != NULL) {
+			OSIterator *iterator = IOService::getMatchingServices(matching);
+			unsigned media = 0;
+			if (iterator != NULL) {
+				while (iterator->getNextObject() != NULL && media < 64) {
+					media++;
+				}
+				iterator->release();
+			}
+			IOLog("KEBAB BLOCK: IOMedia services after registration: %u\n", media);
+			kebab_early_mark(228, "block: IOMedia count");
+			kebab_early_hex((unsigned long long)media);
+			matching->release();
+		}
+	}
 	IOLog("KEBAB BLOCK: registered %llu MiB, %u-byte blocks\n",
 	    kebab_ufs_partition_bytes() >> 20, kebab_ufs_block_size());
 	return 0;

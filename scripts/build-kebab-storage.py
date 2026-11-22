@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 
@@ -85,6 +86,7 @@ OSDefineOperatorMethods(IOBlockStorageDevice)
                device / 'drivers/KebabBlockStorage/KebabSourceStorageParent.cpp',
                device / 'drivers/KebabBlockStorage/KebabBlockStorageDevice.cpp']
     objects = []
+    objcopy = shutil.which('llvm-objcopy') or '/opt/homebrew/opt/llvm/bin/llvm-objcopy'
     for source in sources:
         obj = out / (source.stem + '.o')
         command = compile_command(record, source, obj, includes, [])
@@ -93,8 +95,18 @@ OSDefineOperatorMethods(IOBlockStorageDevice)
         if result.returncode != 0:
             sys.stderr.write(result.stderr[-4000:])
             raise SystemExit(f'{source}: compile failed')
+        if source.name in ('IOBlockStorageDevice.cpp', 'KebabBlockStorageDevice.cpp'):
+            # The kernel would run these constructors from __mod_init_func during
+            # OSRuntimeInitializeCPP, before any prelinked kext class exists; the
+            # base class would then be an orphan root. Strip them here and let
+            # kebab_storage_register_classes() run them after the family loads.
+            late = out / (source.stem + '.late.o')
+            subprocess.run([objcopy, '--remove-section=__DATA,__mod_init_func',
+                            f'--globalize-symbol=__GLOBAL__sub_I_{source.name}', str(obj), str(late)], check=True)
+            obj = late
         objects.append(obj)
     archive = out / 'libKebabStorage.a'
+    archive.unlink(missing_ok=True)
     for obj in objects:
         subprocess.run(['xcrun', 'ar', 'rcs', str(archive), str(obj)], check=True)
     report = dict(archive=str(archive), archive_sha256=sha(archive),
