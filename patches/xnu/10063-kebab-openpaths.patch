@@ -1,0 +1,22 @@
+diff --git a/bsd/vfs/vfs_syscalls.c b/bsd/vfs/vfs_syscalls.c
+index 9c58335..a6b58bb 100644
+--- a/bsd/vfs/vfs_syscalls.c
++++ b/bsd/vfs/vfs_syscalls.c
+@@ -5107,7 +5107,7 @@ openat_internal(vfs_context_t ctx, user_addr_t path, int flags, int mode,
+ 		extern void kebab_early_mark(unsigned, const char *);
+ 		extern void kebab_early_putc(char);
+ 		static unsigned kebab_open_probe;
+-		if (segflg == UIO_USERSPACE && kebab_open_probe < 8 &&
++		if (segflg == UIO_USERSPACE && kebab_open_probe < 24 &&
+ 		    proc_getpid(vfs_context_proc(ctx)) == 1) {
+ 			char kb_path[44];
+ 			size_t kb_len = 0;
+@@ -5142,7 +5142,7 @@ openat_internal(vfs_context_t ctx, user_addr_t path, int flags, int mode,
+ 		extern void kebab_early_mark(unsigned, const char *);
+ 		extern void kebab_early_hex(unsigned long long);
+ 		static unsigned kebab_open_ret;
+-		if (kebab_open_ret < 8 &&
++		if (kebab_open_ret < 24 &&
+ 		    proc_getpid(vfs_context_proc(ctx)) == 1) {
+ 			kebab_open_ret++;
+ 			kebab_early_mark(281, "open result");
