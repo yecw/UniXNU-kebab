@@ -55,6 +55,7 @@ archives = [
   "build-arm-driver.py ArmCpu",
   "build-libpthread-kernel.py",
   "build-kebab-stubs.py",
+  "build-kebab-storage.py",
   # Original-PMGR bridge: package/ShengPlatformPower.cpp and this builder are
   # taken from UniXNU-pipa (kits/pipa, scripts/), not rewritten here.
   "build-platform-power.py",

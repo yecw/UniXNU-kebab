@@ -1,0 +1,110 @@
+--- a/bsd/dev/kebab_ufs.c
++++ b/bsd/dev/kebab_ufs.c
+@@ -1011,8 +1011,90 @@
+ 
+ /* Root device for rd=ufsroot0 (IOFindBSDRoot). */
+ int kebab_ufs_rootdev(dev_t *dev);
+ 
++/*
++ * Raw access for the IOKit block-storage view (ufsmedia=1).
++ *
++ * Offsets are relative to the BSD disk's byte window, which is the APFS
++ * container inside the flashed root image, so the device the storage family
++ * publishes starts exactly at the container superblock.
++ */
++uint64_t
++kebab_ufs_partition_bytes(void)
++{
++	uint64_t bytes;
++
++	lck_mtx_lock(&kebab_ufs_lock);
++	bytes = su.ready ? su.window_bytes : 0;
++	lck_mtx_unlock(&kebab_ufs_lock);
++	return bytes;
++}
++
++uint32_t
++kebab_ufs_block_size(void)
++{
++	return UFS_BLOCK;
++}
++
++static int
++kebab_ufs_raw_io(void *buffer, uint64_t offset, size_t length, bool write)
++{
++	uint8_t *bytes = (uint8_t *)buffer;
++	int error = 0;
++
++	if (length == 0) {
++		return 0;
++	}
++	lck_mtx_lock(&kebab_ufs_lock);
++	if (!su.ready || offset > su.window_bytes || length > su.window_bytes - offset) {
++		lck_mtx_unlock(&kebab_ufs_lock);
++		return EINVAL;
++	}
++	if (write && !su.writable) {
++		lck_mtx_unlock(&kebab_ufs_lock);
++		return EROFS;
++	}
++	for (size_t done = 0; done < length && !error; ) {
++		uint64_t pos = su.window_off + offset + done;
++		uint64_t lba = su.first_block + pos / UFS_BLOCK;
++		uint32_t skip = (uint32_t)(pos % UFS_BLOCK);
++		uint32_t want = MIN(length - done, BOUNCE_SIZE - skip);
++		uint32_t blocks = (skip + want + UFS_BLOCK - 1) / UFS_BLOCK;
++		void *bounce = (void *)(su.dma + DMA_BOUNCE);
++
++		if (write) {
++			if (skip || (want % UFS_BLOCK)) {
++				error = ufs_read_blocks(lba, blocks);
++			}
++			if (!error) {
++				memcpy((char *)bounce + skip, bytes + done, want);
++				error = ufs_write_blocks(lba, blocks);
++			}
++		} else {
++			error = ufs_read_blocks(lba, blocks);
++			if (!error) {
++				memcpy(bytes + done, (const char *)bounce + skip, want);
++			}
++		}
++		done += want;
++	}
++	lck_mtx_unlock(&kebab_ufs_lock);
++	return error;
++}
++
++int
++kebab_ufs_raw_read(void *buffer, uint64_t offset, size_t length)
++{
++	return kebab_ufs_raw_io(buffer, offset, length, false);
++}
++
++int
++kebab_ufs_raw_write(const void *buffer, uint64_t offset, size_t length)
++{
++	return kebab_ufs_raw_io((void *)buffer, offset, length, true);
++}
++
+ int
+ kebab_ufs_rootdev(dev_t *dev)
+ {
+ 	lck_mtx_lock(&kebab_ufs_lock);
+@@ -1024,7 +1106,16 @@
+ 	if (!error) {
+ 		*dev = su.bdev;
+ 	}
+ 	lck_mtx_unlock(&kebab_ufs_lock);
++	if (!error) {
++		/* Publish the APFS container as an IOMedia; APFS starts on match. */
++		extern int kebab_blockstorage_start(void);
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		int media_error = kebab_blockstorage_start();
++		kebab_early_mark(225, "ufs: block storage start");
++		kebab_early_hex((unsigned long long)(unsigned)media_error);
++	}
+ 	return error;
+ }
+ #endif /* __arm64__ */
