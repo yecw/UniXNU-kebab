@@ -1,0 +1,35 @@
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -7100,8 +7100,16 @@
+ 	root_authorized = (vfs_flags(root_mount) & MNT_RDONLY) && root_device != NODEV &&
+ 	    native_verified_block_root_authorized(root_device);
+ 	if (!root_authorized) goto done;
+ 	native_owner_cache_stage = 1;
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		kebab_early_mark(261, "cache mount: root_authorized");
++		kebab_early_hex((unsigned long long)(unsigned)root_authorized);
++		kebab_early_hex((unsigned long long)(unsigned)selected);
++	}
++
+ 	if (!native_verified_block_volume_device(volume, &selected, device_path,
+ 	    sizeof(device_path))) goto done;
+ 	strlcpy(native_owner_cache_device_path, device_path, sizeof(native_owner_cache_device_path));
+ 	native_owner_cache_selected_device = selected;
+@@ -7117,8 +7125,15 @@
+ 	    (error = copyout(device_path, spec, strlen(device_path) + 1)) != 0 ||
+ 	    (error = copyout(mount_data, request.data, sizeof(mount_data))) != 0) goto done;
+ 	native_owner_cache_stage = 3;
+ 	error = mount(p, &request, &result);
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		kebab_early_mark(262, "cache mount: mount() returned");
++		kebab_early_hex((unsigned long long)(unsigned)error);
++		kebab_early_hex((unsigned long long)(unsigned)result);
++	}
+ 	native_owner_cache_mount_status = error;
+ 	if (error) goto done;
+ 	native_owner_cache_stage = 4;
+ 	error = vnode_lookup(mountpoint, 0, &mounted_root, vfs_context_current());

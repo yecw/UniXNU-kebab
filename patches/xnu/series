@@ -112,3 +112,4 @@ pending/adapt-0367-after-0366.patch
 10063-kebab-ufs-liveness.patch
 10063-kebab-ufs-systemos.patch
 10063-kebab-ufs-systemos-io.patch
+10063-kebab-cachemount-probe.patch

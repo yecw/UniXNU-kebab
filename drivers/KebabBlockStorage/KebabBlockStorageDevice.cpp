@@ -391,58 +391,67 @@ native_verified_block_root_authorized(dev_t device)
 extern "C" int
 native_verified_block_volume_device(const char *uuid, dev_t *device, char *path, size_t path_size)
 {
-	OSDictionary *matching;
-	OSDictionary *properties;
-	OSString     *wanted;
-	OSIterator   *iterator;
-	IORegistryEntry *entry;
-	int result = -1;
-
 	if (uuid == NULL || device == NULL) {
 		return -1;
 	}
-	matching = IOService::serviceMatching("IOMedia");
-	properties = OSDictionary::withCapacity(1);
-	wanted = OSString::withCString(uuid);
-	if (matching == NULL || properties == NULL || wanted == NULL) {
-		goto out;
-	}
-	if (!properties->setObject("UUID", wanted) ||
-	    !matching->setObject("IOPropertyMatch", properties)) {
-		goto out;
-	}
-	iterator = IOService::getMatchingServices(matching);
-	if (iterator == NULL) {
-		goto out;
-	}
-	while ((entry = OSDynamicCast(IORegistryEntry, iterator->getNextObject())) != NULL) {
-		OSNumber *major = OSDynamicCast(OSNumber, entry->getProperty(kIOBSDMajorKey));
-		OSNumber *minor = OSDynamicCast(OSNumber, entry->getProperty(kIOBSDMinorKey));
-		OSString *name  = OSDynamicCast(OSString, entry->getProperty(kIOBSDNameKey));
+	/*
+	 * The APFS volume media appears as soon as the container is adopted, but its
+	 * BSD client assigns the device number a little later. Retry for up to a
+	 * second and report what the matching media carries.
+	 */
+	for (int attempt = 0; attempt < 10; attempt++) {
+		OSDictionary    *matching = IOService::serviceMatching("IOMedia");
+		OSIterator      *iterator;
+		IORegistryEntry *entry;
+		unsigned         withUuid = 0, withBsd = 0;
 
-		if (major == NULL || minor == NULL) {
-			continue;
+		if (matching == NULL) {
+			return -1;
 		}
-		*device = makedev((int)major->unsigned32BitValue(), (int)minor->unsigned32BitValue());
-		if (path != NULL && path_size != 0) {
-			snprintf(path, path_size, "/dev/%s",
-			    name != NULL ? name->getCStringNoCopy() : "disk");
+		iterator = IOService::getMatchingServices(matching);
+		if (iterator == NULL) {
+			matching->release();
+			return -1;
 		}
-		result = 0;
-		break;
-	}
-	iterator->release();
-out:
-	if (wanted != NULL) {
-		wanted->release();
-	}
-	if (properties != NULL) {
-		properties->release();
-	}
-	if (matching != NULL) {
+		while ((entry = OSDynamicCast(IORegistryEntry, iterator->getNextObject())) != NULL) {
+			OSString *mediaUuid = OSDynamicCast(OSString, entry->getProperty("UUID"));
+			OSNumber *major = OSDynamicCast(OSNumber, entry->getProperty(kIOBSDMajorKey));
+			OSNumber *minor = OSDynamicCast(OSNumber, entry->getProperty(kIOBSDMinorKey));
+			OSString *name  = OSDynamicCast(OSString, entry->getProperty(kIOBSDNameKey));
+
+			if (mediaUuid == NULL || strcasecmp(mediaUuid->getCStringNoCopy(), uuid) != 0) {
+				continue;
+			}
+			withUuid++;
+			if (major == NULL || minor == NULL) {
+				continue;
+			}
+			withBsd++;
+			*device = makedev((int)major->unsigned32BitValue(), (int)minor->unsigned32BitValue());
+			if (path != NULL && path_size != 0) {
+				snprintf(path, path_size, "/dev/%s",
+				    name != NULL ? name->getCStringNoCopy() : "disk");
+			}
+			kebab_early_mark(260, "volume lookup: matched");
+			kebab_early_hex((unsigned long long)(unsigned)*device);
+			iterator->release();
+			matching->release();
+			return 0;
+		}
+		iterator->release();
 		matching->release();
+		if (withUuid == 0) {
+			/* No media with this UUID yet at all. */
+			kebab_early_mark(263, "volume lookup: uuid missing");
+			kebab_early_hex((unsigned long long)attempt);
+			return -1;
+		}
+		kebab_early_mark(263, "volume lookup: no BSD device yet");
+		kebab_early_hex((unsigned long long)withUuid);
+		kebab_early_hex((unsigned long long)withBsd);
+		IOSleep(100);
 	}
-	return result;
+	return -1;
 }
 
 extern "C" int
