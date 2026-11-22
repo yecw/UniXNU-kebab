@@ -1,0 +1,43 @@
+diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
+index c705c6a..b6f7b0c 100644
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -7193,6 +7193,7 @@ native_owner_cache_prepare(proc_t p, user_addr_t scratch, user_addr_t *envp)
+ 		extern void kebab_early_mark(unsigned, const char *);
+ 		extern void kebab_early_hex(unsigned long long);
+ 		vnode_t kebab_dir = NULLVP, kebab_file = NULLVP;
++		long long kebab_size = -1;
+ 		int kebab_dir_err = vnode_lookup(
+ 		    "/private/preboot/System/Library/Caches/com.apple.dyld", 0, &kebab_dir,
+ 		    vfs_context_current());
+@@ -7211,9 +7212,30 @@ native_owner_cache_prepare(proc_t p, user_addr_t scratch, user_addr_t *envp)
+ 			VATTR_WANTED(&va, va_data_size);
+ 			if (vnode_getattr(kebab_file, &va, vfs_context_current()) == 0) {
+ 				kebab_early_hex((unsigned long long)va.va_data_size);
++				kebab_size = (long long)va.va_data_size;
+ 			}
+ 			vnode_put(kebab_file);
+ 		}
++		/*
++		 * The panel cannot show marks once dyld panics, so with
++		 * kebab_cacheprobe_panic=1 report the same three facts through the
++		 * panic screen instead.
++		 */
++		{
++			extern boolean_t PE_parse_boot_argn(const char *, void *, int);
++			char kebab_flag[8];
++			if (PE_parse_boot_argn("kebab_cacheprobe_panic", kebab_flag, sizeof(kebab_flag))) {
++				char kebab_env[128];
++				size_t kebab_env_len = 0;
++				if (copyinstr(scratch + 0x400, kebab_env, sizeof(kebab_env),
++				    &kebab_env_len) != 0) {
++					kebab_env_len = 0;
++				}
++				panic("KEBAB probe env=%lu dir=%d file=%d size=%lld",
++				    (unsigned long)kebab_env_len, kebab_dir_err, kebab_file_err,
++				    kebab_size);
++			}
++		}
+ 	}
+ #endif
+ 	native_owner_cache_stage = 6;done:

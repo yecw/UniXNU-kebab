@@ -175,6 +175,8 @@ kernel_args = [
   # never returns on this port, so 10063-kebab-image4-ignition.patch answers
   # ENOENT for that one MIB while this argument is present (bring-up only).
   "kebab_skip_ignition_blob=1",
+  # Bring-up instrument: panic before exec with the cache-path probe result, so
+  # the numbers are visible on the panic screen (marks are painted over).
 ]
 
 # OnePlus ABL on kebab: header v2 / 4096-byte pages. "fastboot boot" is refused by

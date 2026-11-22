@@ -121,3 +121,4 @@ pending/adapt-0367-after-0366.patch
 10063-kebab-console-direct.patch
 10063-kebab-image4-ignition.patch
 10063-kebab-cachepath-probe.patch
+10063-kebab-cacheprobe-panic.patch
