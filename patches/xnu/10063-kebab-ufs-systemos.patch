@@ -1,0 +1,39 @@
+--- a/bsd/dev/kebab_ufs.c
++++ b/bsd/dev/kebab_ufs.c
+@@ -110,8 +110,10 @@
+ 	uint64_t device_blocks;
+ 	uint64_t first_block, nblocks;          /* partition, in 4 KiB device blocks */
+ 	uint64_t window_off;                    /* byte offset of the BSD disk inside it */
+ 	uint64_t window_bytes;                  /* length of the BSD disk */
++	uint64_t systemos_off;                  /* SystemOS window (dyld shared cache) */
++	uint64_t systemos_bytes;
+ 	uint32_t secsize;                       /* logical sector size for the BSD layer */
+ 	int bmajor, cmajor;
+ 	dev_t bdev;
+ 	bool ready;
+@@ -840,8 +842,12 @@
+ 		const uint8_t *entry = block + MANIFEST_HEADER + (uint64_t)i * MANIFEST_ENTRY;
+ 		if (strncmp((const char *)entry, "OS", sizeof("OS")) == 0 && entry[2] == 0) {
+ 			offset = ufs_le64(entry + 32);
+ 			size   = ufs_le64(entry + 40);
++		} else if (strncmp((const char *)entry, "SystemOS", sizeof("SystemOS")) == 0 &&
++		    entry[8] == 0) {
++			su.systemos_off   = ufs_le64(entry + 32);
++			su.systemos_bytes = ufs_le64(entry + 40);
+ 		}
+ 	}
+ 	if (size == 0) {
+ 		printf("KEBAB UFS: manifest has no OS window\n");
+@@ -932,8 +938,12 @@
+ 			kebab_early_mark(219, "ufs: window head");
+ 			kebab_early_hex(magic);
+ 		}
+ 	}
++	if (su.systemos_bytes != 0) {
++		printf("KEBAB UFS: SystemOS window off 0x%llx size 0x%llx\n",
++		    su.systemos_off, su.systemos_bytes);
++	}
+ 	printf("KEBAB UFS: OS window off 0x%llx size 0x%llx, BSD disk on the OS image\n",
+ 	    offset, size);
+ 	return 0;
+ }

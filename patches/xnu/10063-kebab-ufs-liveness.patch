@@ -1,19 +1,19 @@
 --- a/bsd/dev/kebab_ufs.c
 +++ b/bsd/dev/kebab_ufs.c
-@@ -1146,8 +1146,16 @@
- 		} else {
- 			error = ufs_read_blocks(lba, blocks);
+@@ -627,8 +627,16 @@
+ 		if (rd) {
+ 			error = ufs_read_blocks(su.first_block + lba, blocks);
  			if (!error) {
- 				memcpy(bytes + done, (const char *)bounce + skip, want);
-+				/* Liveness probe: userland page-ins show up as reads here. */
-+				static uint64_t kebab_reads;
-+				if ((++kebab_reads & 0xff) == 0) {
+ 				memcpy(vaddr + done, (const char *)bounce + skip, want);
++				/* Liveness: APFS page-ins arrive on this BSD path. */
++				static uint64_t kebab_bsd_reads;
++				if ((++kebab_bsd_reads & 0x3f) == 0) {
 +					extern void kebab_early_mark(unsigned, const char *);
 +					extern void kebab_early_hex(unsigned long long);
-+					kebab_early_mark(253, "ufs: reads");
-+					kebab_early_hex(kebab_reads);
++					kebab_early_mark(253, "ufs: bsd reads");
++					kebab_early_hex(kebab_bsd_reads);
 +				}
  			}
- 		}
- 		done += want;
- 	}
+ 		} else {
+ 			/* Partial device blocks at either end: read, merge, write back. */
+ 			if (skip || (want % UFS_BLOCK)) {

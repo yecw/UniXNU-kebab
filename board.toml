@@ -162,6 +162,7 @@ kernel_args = [
   "rd=ufsroot0",
   "ufsroot=userdata",
   "ufsmedia_root=2",
+  "launchdsuffix=release",
   "amfi_get_out_of_my_way=1",
   "rootrw=0",
   "keepsyms=1",

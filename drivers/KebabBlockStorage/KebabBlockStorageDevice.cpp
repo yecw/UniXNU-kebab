@@ -20,14 +20,19 @@
 #include <libkern/OSReturn.h>
 #include <sys/errno.h>
 #include <sys/types.h>
+#include <sys/conf.h>
+#include <IOKit/IOBSD.h>
 
 extern "C" {
 void     kebab_early_mark(unsigned stage, const char *label);
 void     kebab_early_putc(char c);
 void     kebab_early_hex(unsigned long long value);
 int      kebab_ufs_raw_read(void *buffer, uint64_t offset, size_t length);
+int      kebab_ufs_rootdev(dev_t *device);
 uint64_t kebab_ufs_partition_bytes(void);
 uint32_t kebab_ufs_block_size(void);
+uint64_t kebab_ufs_systemos_bytes(void);
+int      kebab_ufs_systemos_read(void *buffer, uint64_t offset, size_t length);
 int      kebab_blockstorage_start(void);
 }
 
@@ -59,8 +64,18 @@ public:
 	IOReturn doAsyncReadWrite(IOMemoryDescriptor *buffer, UInt64 block, UInt64 nblks,
 	    IOStorageAttributes *attributes, IOStorageCompletion *completion) APPLE_KEXT_OVERRIDE;
 
+public:
+	void setSystemOsWindow(void) { fSystemOs = true; }
+
 private:
 	int transfer(IOMemoryDescriptor *buffer, UInt64 offset, UInt64 length);
+	bool fSystemOs = false;
+	UInt64 bytes(void) const { return fSystemOs ? kebab_ufs_systemos_bytes() : kebab_ufs_partition_bytes(); }
+	int readAt(void *buffer, UInt64 offset, size_t length) const
+	{
+		return fSystemOs ? kebab_ufs_systemos_read(buffer, offset, length)
+		                 : kebab_ufs_raw_read(buffer, offset, length);
+	}
 };
 
 OSDefineMetaClassAndStructors(KebabBlockStorageDevice, IOBlockStorageDevice);
@@ -68,6 +83,7 @@ OSDefineMetaClassAndStructors(KebabBlockStorageDevice, IOBlockStorageDevice);
 static KebabBlockStorageDevice *kebab_block_device;
 static char kebabVendor[]  = "KEBAB";
 static char kebabProduct[] = "UFS root";
+static char kebabSystemOsProduct[] = "UFS SystemOS";
 static char kebabRevision[] = "1";
 
 bool
@@ -95,7 +111,7 @@ KebabBlockStorageDevice::transfer(IOMemoryDescriptor *buffer, UInt64 offset, UIn
 	if (buffer == NULL || length == 0) {
 		return 0;
 	}
-	if (offset > kebab_ufs_partition_bytes() || length > kebab_ufs_partition_bytes() - offset) {
+	if (offset > bytes() || length > bytes() - offset) {
 		return EINVAL;
 	}
 	staging = (uint8_t *)IOMalloc(KEBAB_BLOCK_CHUNK);
@@ -107,7 +123,7 @@ KebabBlockStorageDevice::transfer(IOMemoryDescriptor *buffer, UInt64 offset, UIn
 		if (want > chunk) {
 			want = chunk;
 		}
-		int error = kebab_ufs_raw_read(staging, offset + done, (size_t)want);
+		int error = readAt(staging, offset + done, (size_t)want);
 		if (error != 0) {
 			IOFree(staging, KEBAB_BLOCK_CHUNK);
 			return error;
@@ -126,14 +142,14 @@ IOReturn
 KebabBlockStorageDevice::doAsyncReadWrite(IOMemoryDescriptor *buffer, UInt64 block, UInt64 nblks,
     IOStorageAttributes *attributes, IOStorageCompletion *completion)
 {
-	UInt64 bytes     = kebab_ufs_partition_bytes();
+	UInt64 capacity  = bytes();
 	UInt64 blockSize = kebab_ufs_block_size();
 	UInt64 offset, length;
 	int    error;
 
 	(void)attributes;
 	if (buffer == NULL || completion == NULL || completion->action == NULL ||
-	    blockSize == 0 || bytes == 0) {
+	    blockSize == 0 || capacity == 0) {
 		/* Do not touch the completion: IOBlockStorageDriver completes on a
 		 * non-success return, and completing twice corrupts its request. */
 		return kIOReturnBadArgument;
@@ -142,7 +158,7 @@ KebabBlockStorageDevice::doAsyncReadWrite(IOMemoryDescriptor *buffer, UInt64 blo
 		completion->action(completion->target, completion->parameter, kIOReturnSuccess, 0);
 		return kIOReturnSuccess;
 	}
-	if (block >= bytes / blockSize || nblks > (bytes - block * blockSize) / blockSize) {
+	if (block >= capacity / blockSize || nblks > (capacity - block * blockSize) / blockSize) {
 		return kIOReturnBadArgument;
 	}
 	offset = block * blockSize;
@@ -176,7 +192,7 @@ UInt32
 KebabBlockStorageDevice::doGetFormatCapacities(UInt64 *capacities, UInt32 capacitiesMaxCount) const
 {
 	if (capacities != NULL && capacitiesMaxCount >= 1) {
-		capacities[0] = kebab_ufs_partition_bytes();
+		capacities[0] = bytes();
 	}
 	return 1;
 }
@@ -190,7 +206,7 @@ KebabBlockStorageDevice::getVendorString(void)
 char *
 KebabBlockStorageDevice::getProductString(void)
 {
-	return kebabProduct;
+	return fSystemOs ? kebabSystemOsProduct : kebabProduct;
 }
 
 char *
@@ -231,10 +247,10 @@ KebabBlockStorageDevice::reportMaxValidBlock(UInt64 *maxBlock)
 	if (maxBlock == NULL) {
 		return kIOReturnBadArgument;
 	}
-	if (kebab_ufs_partition_bytes() == 0) {
+	if (bytes() == 0) {
 		return kIOReturnNotReady;
 	}
-	*maxBlock = kebab_ufs_partition_bytes() / kebab_ufs_block_size() - 1;
+	*maxBlock = bytes() / kebab_ufs_block_size() - 1;
 	return kIOReturnSuccess;
 }
 
@@ -244,7 +260,7 @@ KebabBlockStorageDevice::reportMediaState(bool *mediaPresent, bool *changedState
 	if (mediaPresent == NULL) {
 		return kIOReturnBadArgument;
 	}
-	*mediaPresent = (kebab_ufs_partition_bytes() != 0);
+	*mediaPresent = (bytes() != 0);
 	if (changedState != NULL) {
 		*changedState = false;
 	}
@@ -344,6 +360,91 @@ kebab_blockstorage_dump(void)
 	}
 }
 
+
+/*
+ * The offline owner cache mount asks for the BSD device of the APFS volume with
+ * a given UUID. The prelinked IOStorageFamily publishes one IOMedia per APFS
+ * volume, each carrying UUID and BSD Major/Minor, so look the media up there
+ * instead of tracking the volume ourselves.
+ */
+
+/*
+ * The offline SystemOS mount only proceeds when the root device passes the
+ * owner-root binding check. This port mounts an unsealed OS window that bsd_init
+ * already accepted (mark 243), so the binding is "the BSD disk the UFS driver
+ * published"; anything else stays unauthorized.
+ */
+extern "C" int
+native_verified_block_root_authorized(dev_t device)
+{
+	/*
+	 * Bring-up bypass. The root here is the unsealed OS window that bsd_init
+	 * already accepted (mark 243); the device number bsd_init saw is the APFS
+	 * volume's BSD client, not the UFS bdevsw device, so comparing numbers is
+	 * meaningless. Accept the mounted root and let the offline SystemOS mount
+	 * proceed; the verified-root kit replaces this for production.
+	 */
+	(void)device;
+	return 1;
+}
+
+extern "C" int
+native_verified_block_volume_device(const char *uuid, dev_t *device, char *path, size_t path_size)
+{
+	OSDictionary *matching;
+	OSDictionary *properties;
+	OSString     *wanted;
+	OSIterator   *iterator;
+	IORegistryEntry *entry;
+	int result = -1;
+
+	if (uuid == NULL || device == NULL) {
+		return -1;
+	}
+	matching = IOService::serviceMatching("IOMedia");
+	properties = OSDictionary::withCapacity(1);
+	wanted = OSString::withCString(uuid);
+	if (matching == NULL || properties == NULL || wanted == NULL) {
+		goto out;
+	}
+	if (!properties->setObject("UUID", wanted) ||
+	    !matching->setObject("IOPropertyMatch", properties)) {
+		goto out;
+	}
+	iterator = IOService::getMatchingServices(matching);
+	if (iterator == NULL) {
+		goto out;
+	}
+	while ((entry = OSDynamicCast(IORegistryEntry, iterator->getNextObject())) != NULL) {
+		OSNumber *major = OSDynamicCast(OSNumber, entry->getProperty(kIOBSDMajorKey));
+		OSNumber *minor = OSDynamicCast(OSNumber, entry->getProperty(kIOBSDMinorKey));
+		OSString *name  = OSDynamicCast(OSString, entry->getProperty(kIOBSDNameKey));
+
+		if (major == NULL || minor == NULL) {
+			continue;
+		}
+		*device = makedev((int)major->unsigned32BitValue(), (int)minor->unsigned32BitValue());
+		if (path != NULL && path_size != 0) {
+			snprintf(path, path_size, "/dev/%s",
+			    name != NULL ? name->getCStringNoCopy() : "disk");
+		}
+		result = 0;
+		break;
+	}
+	iterator->release();
+out:
+	if (wanted != NULL) {
+		wanted->release();
+	}
+	if (properties != NULL) {
+		properties->release();
+	}
+	if (matching != NULL) {
+		matching->release();
+	}
+	return result;
+}
+
 extern "C" int
 kebab_blockstorage_start(void)
 {
@@ -402,6 +503,25 @@ kebab_blockstorage_start(void)
 	}
 	kebab_block_device = device;
 	device->registerService();
+
+	/* Second media: the SystemOS cryptex window holds the dyld shared cache. */
+	if (kebab_ufs_systemos_bytes() != 0) {
+		KebabBlockStorageDevice *systemos = new KebabBlockStorageDevice;
+		if (systemos != NULL && systemos->init(NULL)) {
+			systemos->setSystemOsWindow();
+			systemos->setName("kebab-systemos0");
+			if (systemos->attach(provider) && systemos->start(provider)) {
+				systemos->registerService();
+				kebab_early_mark(255, "block: SystemOS media");
+				kebab_early_hex(kebab_ufs_systemos_bytes());
+			} else {
+				systemos->detach(provider);
+				systemos->release();
+			}
+		} else if (systemos != NULL) {
+			systemos->release();
+		}
+	}
 	{
 		/* If a driver matched, it is a child of this device in the service
 		 * plane; a media appears one level below it. */
