@@ -1,0 +1,344 @@
+diff --git a/bsd/dev/kebab_ufs.c b/bsd/dev/kebab_ufs.c
+index 9f80000..51d1e60 100644
+--- a/bsd/dev/kebab_ufs.c
++++ b/bsd/dev/kebab_ufs.c
+@@ -30,6 +30,7 @@
+ #include <sys/errno.h>
+ #include <sys/fcntl.h>
+ #include <sys/proc.h>
++#include <sys/proc_internal.h>
+ #include <sys/uio.h>
+ #include <miscfs/devfs/devfs.h>
+ #include <kern/locks.h>
+@@ -638,6 +639,23 @@ kebab_ufs_strategy(buf_t bp)
+ 					kebab_early_mark(253, "ufs: bsd reads");
+ 					kebab_early_hex(kebab_bsd_reads);
+ 				}
++#if defined(KEBAB)
++				/* KEBAB bring-up: name the first PID 1 reads so "no
++				 * userland I/O" cannot hide behind the 64-read window. */
++				{
++					extern void kebab_early_mark(unsigned, const char *);
++					extern void kebab_early_hex(unsigned long long);
++					static uint64_t kebab_pid1_reads;
++					struct proc *kebab_proc = current_proc();
++					if (kebab_pid1_reads < 8 && kebab_proc != NULL &&
++					    proc_getpid(kebab_proc) == 1) {
++						kebab_pid1_reads++;
++						kebab_early_mark(259, "ufs: pid1 read");
++						kebab_early_hex(lba);
++						kebab_early_hex(blocks);
++					}
++				}
++#endif
+ 			}
+ 		} else {
+ 			/* Partial device blocks at either end: read, merge, write back. */
+@@ -1165,6 +1183,27 @@ kebab_ufs_raw_io(void *buffer, uint64_t offset, size_t length, bool write)
+ 			error = ufs_read_blocks(lba, blocks);
+ 			if (!error) {
+ 				memcpy(bytes + done, (const char *)bounce + skip, want);
++#if defined(KEBAB)
++				{
++					extern void kebab_early_mark(unsigned, const char *);
++					extern void kebab_early_hex(unsigned long long);
++					static uint64_t kebab_raw_reads, kebab_raw_pid1;
++					struct proc *kebab_proc;
++					kebab_raw_reads++;
++					if (kebab_raw_reads == 1 || (kebab_raw_reads % 2048) == 0) {
++						kebab_early_mark(276, "ufs: os window reads");
++						kebab_early_hex(kebab_raw_reads);
++					}
++					kebab_proc = current_proc();
++					if (kebab_raw_pid1 < 8 && kebab_proc != NULL &&
++					    proc_getpid(kebab_proc) == 1) {
++						kebab_raw_pid1++;
++						kebab_early_mark(274, "ufs: pid1 os read");
++						kebab_early_hex(offset + done);
++						kebab_early_hex(lba);
++					}
++				}
++#endif
+ 			}
+ 		}
+ 		done += want;
+@@ -1211,6 +1250,26 @@ kebab_ufs_systemos_read(void *buffer, uint64_t offset, size_t length)
+ 		error = ufs_read_blocks(lba, blocks);
+ 		if (!error) {
+ 			memcpy(bytes + done, (const char *)bounce + skip, want);
++#if defined(KEBAB)
++			{
++				extern void kebab_early_mark(unsigned, const char *);
++				extern void kebab_early_hex(unsigned long long);
++				static uint64_t kebab_sysos_reads;
++				struct proc *kebab_proc;
++				kebab_sysos_reads++;
++				if (kebab_sysos_reads == 1 || (kebab_sysos_reads % 2048) == 0) {
++					kebab_early_mark(275, "ufs: sysos reads");
++					kebab_early_hex(kebab_sysos_reads);
++					kebab_early_hex(offset + done);
++				}
++				kebab_proc = current_proc();
++				if (kebab_sysos_reads <= 4 && kebab_proc != NULL &&
++				    proc_getpid(kebab_proc) == 1) {
++					kebab_early_mark(277, "ufs: pid1 sysos read");
++					kebab_early_hex(offset + done);
++				}
++			}
++#endif
+ 		}
+ 		done += want;
+ 	}
+diff --git a/bsd/kern/kern_exit.c b/bsd/kern/kern_exit.c
+index 760c339..87612b4 100644
+--- a/bsd/kern/kern_exit.c
++++ b/bsd/kern/kern_exit.c
+@@ -1853,6 +1853,19 @@ proc_handle_critical_exit(proc_t p, int rv)
+ #endif
+ 
+ 	if (p == initproc) {
++#if defined(KEBAB)
++		/* KEBAB bring-up: launchd died. Show the exit reason before the panic. */
++		{
++			extern void kebab_early_mark(unsigned, const char *);
++			extern void kebab_early_hex(unsigned long long);
++			kebab_early_mark(257, "exit1: initproc");
++			kebab_early_hex((unsigned long long)(unsigned)rv);
++			kebab_early_hex(p->p_exit_reason != OS_REASON_NULL ?
++			    (unsigned long long)p->p_exit_reason->osr_namespace : 0);
++			kebab_early_hex(p->p_exit_reason != OS_REASON_NULL ?
++			    (unsigned long long)p->p_exit_reason->osr_code : 0);
++		}
++#endif
+ 		if (strnstr(p->p_name, "preinit", sizeof(p->p_name))) {
+ 			prefix_str = "LTE preinit process exited";
+ 		} else if (initproc_spawned) {
+diff --git a/bsd/kern/kern_newsysctl.c b/bsd/kern/kern_newsysctl.c
+index e4b17c6..5b1d5bc 100644
+--- a/bsd/kern/kern_newsysctl.c
++++ b/bsd/kern/kern_newsysctl.c
+@@ -1208,14 +1208,45 @@ sysctl_sysctl_name2oid(__unused struct sysctl_oid *oidp, __unused void *arg1,
+ 	}
+ 
+ 	p[req->newlen] = '\0';
++#if defined(KEBAB)
++	/* KEBAB bring-up: which name does sysctlbyname() resolve, and how far does
++	 * the translation get? The rolling syscall trace says PID 1 is stuck in
++	 * sysctl; this says what it asked for. */
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		extern void kebab_early_putc(char);
++		kebab_early_mark(287, "name2oid:");
++		for (size_t i = 0; i < req->newlen && i < 40; i++) {
++			kebab_early_putc(p[i]);
++		}
++		kebab_early_putc('\n');
++	}
++#endif
+ 
+ 	/*
+ 	 * Note:	We acquire and release the geometry lock here to
+ 	 *		avoid making name2oid needlessly complex.
+ 	 */
+ 	lck_rw_lock_shared(&sysctl_geometry_lock);
++#if defined(KEBAB)
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		kebab_early_mark(288, "name2oid: lock held");
++	}
++#endif
+ 	error = name2oid(p, oid, &len);
+ 	lck_rw_done(&sysctl_geometry_lock);
++#if defined(KEBAB)
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		kebab_early_mark(289, "name2oid: done");
++		kebab_early_hex((unsigned long long)(unsigned)error);
++		kebab_early_hex((unsigned long long)len);
++		kebab_early_hex((unsigned long long)(unsigned)oid[0]);
++	}
++#endif
+ 
+ 	kfree_data(p, req->newlen + 1);
+ 
+@@ -1891,6 +1922,21 @@ sysctl(proc_t p, struct sysctl_args *uap, __unused int32_t *retval)
+ 	if (error) {
+ 		return error;
+ 	}
++#if defined(KEBAB)
++	/* KEBAB bring-up: which MIB does dyld ask for, and does it come back? */
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		static unsigned marks;
++		if (marks < 6 && proc_getpid(p) == 1) {
++			marks++;
++			kebab_early_mark(286, "sysctl");
++			kebab_early_hex((unsigned long long)(unsigned)name[0]);
++			kebab_early_hex((unsigned long long)(unsigned)name[1]);
++			kebab_early_hex((unsigned long long)(unsigned)uap->namelen);
++		}
++	}
++#endif
+ 
+ 	AUDIT_ARG(ctlname, name, uap->namelen);
+ 
+diff --git a/bsd/vfs/vfs_syscalls.c b/bsd/vfs/vfs_syscalls.c
+index 34c921b..9c58335 100644
+--- a/bsd/vfs/vfs_syscalls.c
++++ b/bsd/vfs/vfs_syscalls.c
+@@ -5101,6 +5101,28 @@ openat_internal(vfs_context_t ctx, user_addr_t path, int flags, int mode,
+ 	struct nameidata *ndp;
+ 	int cmode;
+ 	int error;
++#if defined(KEBAB)
++	/* KEBAB bring-up: dyld's search for the shared cache, spelled out. */
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_putc(char);
++		static unsigned kebab_open_probe;
++		if (segflg == UIO_USERSPACE && kebab_open_probe < 8 &&
++		    proc_getpid(vfs_context_proc(ctx)) == 1) {
++			char kb_path[44];
++			size_t kb_len = 0;
++			if (copyinstr(path, kb_path, sizeof(kb_path), &kb_len) == 0) {
++				size_t kb_i;
++				kebab_open_probe++;
++				kebab_early_mark(280, "open path");
++				for (kb_i = 0; kb_i + 1 < kb_len && kb_path[kb_i] != 0; kb_i++) {
++					kebab_early_putc(kb_path[kb_i]);
++				}
++				kebab_early_putc('\n');
++			}
++		}
++	}
++#endif
+ 
+ 	__open_data = kalloc_type(typeof(*__open_data), Z_WAITOK);
+ 	vap = &__open_data->va;
+@@ -5115,6 +5137,19 @@ openat_internal(vfs_context_t ctx, user_addr_t path, int flags, int mode,
+ 	    segflg, path, ctx);
+ 
+ 	error = open1at(ctx, ndp, flags, vap, NULL, NULL, retval, fd, AUTH_OPEN_NOAUTHFD);
++#if defined(KEBAB)
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		static unsigned kebab_open_ret;
++		if (kebab_open_ret < 8 &&
++		    proc_getpid(vfs_context_proc(ctx)) == 1) {
++			kebab_open_ret++;
++			kebab_early_mark(281, "open result");
++			kebab_early_hex((unsigned long long)(unsigned)error);
++		}
++	}
++#endif
+ 
+ 	kfree_type(typeof(*__open_data), __open_data);
+ 
+diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
+index 35d448b..869818f 100644
+--- a/osfmk/arm64/sleh.c
++++ b/osfmk/arm64/sleh.c
+@@ -643,6 +643,27 @@ sleh_synchronous(arm_context_t *context, uint32_t esr, vm_offset_t far, __unused
+ #endif
+ 	bool is_user = PSR64_IS_USER(get_saved_state_cpsr(state));
+ 
++#if defined(KEBAB)
++	/*
++	 * KEBAB bring-up: prove the thread came back to EL0. The first user
++	 * exceptions are the dyld page-ins; their FAR/PC say whether user mode
++	 * started at all.
++	 */
++	if (is_user) {
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		static unsigned kebab_el0_faults;
++		if (kebab_el0_faults < 4) {
++			kebab_el0_faults++;
++			kebab_early_mark(254, "el0 fault");
++			kebab_early_hex((unsigned long long)class);
++			kebab_early_hex((unsigned long long)esr);
++			kebab_early_hex((unsigned long long)far);
++			kebab_early_hex((unsigned long long)get_saved_state_pc(state));
++		}
++	}
++#endif
++
+ #if CONFIG_SPTM
+ 	// Lockdown should only be initiated for kernel exceptions
+ 	assert(!(is_user && did_initiate_panic_lockdown));
+@@ -1894,6 +1915,31 @@ handle_svc(arm_saved_state_t *state)
+ 	thread_t thread  = current_thread();
+ 	struct   proc *p;
+ 
++#if defined(KEBAB)
++	/* KEBAB bring-up: the first user syscall/Mach trap, with its number. */
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		extern void kebab_early_putc(char);
++		static unsigned kebab_svc_marks;
++		if (kebab_svc_marks < 6) {
++			kebab_svc_marks++;
++			kebab_early_mark(255, "el0 svc");
++			kebab_early_hex((unsigned long long)(unsigned)trap_no);
++		} else {
++			/* Rolling trace without a newline: the last token on the frozen
++			 * panel is the syscall that never returned. */
++			static const char digits[] = "0123456789abcdef";
++			unsigned value = (unsigned)trap_no & 0xffffu;
++			kebab_early_putc(digits[(value >> 12) & 0xf]);
++			kebab_early_putc(digits[(value >> 8) & 0xf]);
++			kebab_early_putc(digits[(value >> 4) & 0xf]);
++			kebab_early_putc(digits[value & 0xf]);
++			kebab_early_putc(' ');
++		}
++	}
++#endif
++
+ #define handle_svc_kprintf(x...) /* kprintf("handle_svc: " x) */
+ 
+ #define TRACE_SYSCALL 1
+diff --git a/osfmk/kern/ast.c b/osfmk/kern/ast.c
+index f72e412..948e98d 100644
+--- a/osfmk/kern/ast.c
++++ b/osfmk/kern/ast.c
+@@ -222,6 +222,17 @@ ast_taken_user(void)
+ 	if (reasons & AST_BSD) {
+ 		thread_ast_clear(thread, AST_BSD);
+ 		bsd_ast(thread);
++#if defined(KEBAB)
++		/* KEBAB bring-up: the pre-ERET AST (bsdinit_task + exec) is done. */
++		{
++			extern void kebab_early_mark(unsigned, const char *);
++			static unsigned kebab_ast_marks;
++			if (kebab_ast_marks < 4) {
++				kebab_ast_marks++;
++				kebab_early_mark(256, "ast: bsd_ast done");
++			}
++		}
++#endif
+ 	}
+ #endif
+ 
+diff --git a/osfmk/kern/debug.c b/osfmk/kern/debug.c
+index e9daeed..f61229f 100644
+--- a/osfmk/kern/debug.c
++++ b/osfmk/kern/debug.c
+@@ -1132,6 +1132,13 @@ void
+ panic_trap_to_debugger(const char *panic_format_str, va_list *panic_args, unsigned int reason, void *ctx,
+     uint64_t panic_options_mask, void *panic_data_ptr, unsigned long panic_caller)
+ {
++#if defined(KEBAB)
++	/* KEBAB bring-up: panic() never printf()s; put the format string on the panel. */
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		kebab_early_mark(258, panic_format_str);
++	}
++#endif
+ #pragma clang diagnostic pop
+ 
+ #if defined(__x86_64__) && (DEVELOPMENT || DEBUG)

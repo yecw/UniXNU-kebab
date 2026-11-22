@@ -1,0 +1,32 @@
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -7119,12 +7119,25 @@
+ 	memcpy(mount_data + 8, &mount_flags, sizeof(mount_flags));
+ 	memcpy(mount_data + 16, &mount_mode, sizeof(mount_mode));
+ 	memcpy(mount_data + 0x144, &anonymous_owner, sizeof(anonymous_owner));
+ 	memcpy(mount_data + 0x148, &anonymous_owner, sizeof(anonymous_owner));
+-	if ((error = copyout("apfs", request.type, 5)) != 0 ||
+-	    (error = copyout(mountpoint, request.path, strlen(mountpoint) + 1)) != 0 ||
+-	    (error = copyout(device_path, spec, strlen(device_path) + 1)) != 0 ||
+-	    (error = copyout(mount_data, request.data, sizeof(mount_data))) != 0) goto done;
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		int e;
++		e = copyout("apfs", request.type, 5);
++		kebab_early_mark(265, "cache: copyout apfs"); kebab_early_hex((unsigned long long)(unsigned)e);
++		if (e) { error = e; goto done; }
++		e = copyout(mountpoint, request.path, strlen(mountpoint) + 1);
++		kebab_early_mark(266, "cache: copyout path"); kebab_early_hex((unsigned long long)(unsigned)e);
++		if (e) { error = e; goto done; }
++		e = copyout(device_path, spec, strlen(device_path) + 1);
++		kebab_early_mark(267, "cache: copyout devpath"); kebab_early_hex((unsigned long long)(unsigned)e);
++		if (e) { error = e; goto done; }
++		e = copyout(mount_data, request.data, sizeof(mount_data));
++		kebab_early_mark(268, "cache: copyout data"); kebab_early_hex((unsigned long long)(unsigned)e);
++		if (e) { error = e; goto done; }
++	}
+ 	native_owner_cache_stage = 3;
+ 	error = mount(p, &request, &result);
+ 	{
+ 		extern void kebab_early_mark(unsigned, const char *);

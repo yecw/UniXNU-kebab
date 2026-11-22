@@ -1,0 +1,21 @@
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -7182,10 +7182,16 @@
+ 	*envp = scratch + 0x500;
+ #else
+ 	*envp = USER_ADDR_NULL;
+ #endif
+-	native_owner_cache_stage = 6;
+-done:
++	native_owner_cache_stage = 6;done:
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		kebab_early_mark(270, "cache: done stage/error");
++		kebab_early_hex((unsigned long long)(unsigned)native_owner_cache_stage);
++		kebab_early_hex((unsigned long long)(unsigned)error);
++	}
+ 	if (mounted_root) vnode_put(mounted_root);
+ 	int root_recheck = root_authorized && native_verified_block_root_authorized(root_device);
+ 	native_owner_cache_root_recheck = root_recheck;
+ 	if (!root_recheck) error = EAUTH;

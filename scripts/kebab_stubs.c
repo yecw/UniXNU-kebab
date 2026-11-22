@@ -21,9 +21,7 @@ KSTUB void native_owner_root_accepted_checkpoint(int a, int b) { (void)a; (void)
 KSTUB void native_owner_root_checkpoint(int a, int b, int c) { (void)a; (void)b; (void)c; }
 KSTUB int  native_owner_publish_boot_manifest(int a, const char *b, int c, const char *d)
 { (void)a; (void)b; (void)c; (void)d; return 0; }
-KSTUB int  native_verified_block_root_authorized(int a) { (void)a; return 0; }
-KSTUB int  native_verified_block_volume_device(const char *a, int *b, char *c, unsigned long d)
-{ (void)a; (void)b; (void)c; (void)d; return 0; }
+/* native_verified_block_root_authorized: provided by drivers/KebabBlockStorage */
 KSTUB int  native_ram_block_volume_seed(const char *a, int *b, char *c, unsigned long d,
                                         unsigned long *e, unsigned long *f, unsigned char *g)
 { (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; (void)g; return 0; }

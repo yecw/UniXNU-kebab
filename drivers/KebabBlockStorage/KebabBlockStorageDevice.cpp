@@ -388,30 +388,48 @@ native_verified_block_root_authorized(dev_t device)
 	return 1;
 }
 
+/*
+ * Boolean contract: 1 when the volume device was found, 0 when it was not.
+ * Both XNU call sites (bsd/kern/kern_exec.c and bsd/vm/vm_unix.c) test it as
+ * `if (!native_verified_block_volume_device(...))`, and the official provider
+ * (drivers/VirtioMmioBlock/NativeVirtioBlock.cpp) returns 1/0. An -1/0 Unix
+ * convention here made a successful lookup bail out of
+ * native_owner_cache_prepare() with the initial EAUTH (mark 270 = stage 1).
+ */
 extern "C" int
 native_verified_block_volume_device(const char *uuid, dev_t *device, char *path, size_t path_size)
 {
 	if (uuid == NULL || device == NULL) {
-		return -1;
+		return 0;
+	}
+	{
+		/* What the caller asks for, next to the media UUID printed by 259. */
+		extern void kebab_early_putc(char);
+		const char *text = uuid;
+		kebab_early_mark(271, "volume lookup: requested");
+		while (text != NULL && *text != '\0') {
+			kebab_early_putc(*text++);
+		}
+		kebab_early_putc('\n');
 	}
 	/*
 	 * The APFS volume media appears as soon as the container is adopted, but its
 	 * BSD client assigns the device number a little later. Retry for up to a
 	 * second and report what the matching media carries.
 	 */
-	for (int attempt = 0; attempt < 10; attempt++) {
+	for (int attempt = 0; attempt < 50; attempt++) {
 		OSDictionary    *matching = IOService::serviceMatching("IOMedia");
 		OSIterator      *iterator;
 		IORegistryEntry *entry;
 		unsigned         withUuid = 0, withBsd = 0;
 
 		if (matching == NULL) {
-			return -1;
+			return 0;
 		}
 		iterator = IOService::getMatchingServices(matching);
 		if (iterator == NULL) {
 			matching->release();
-			return -1;
+			return 0;
 		}
 		while ((entry = OSDynamicCast(IORegistryEntry, iterator->getNextObject())) != NULL) {
 			OSString *mediaUuid = OSDynamicCast(OSString, entry->getProperty("UUID"));
@@ -436,7 +454,7 @@ native_verified_block_volume_device(const char *uuid, dev_t *device, char *path,
 			kebab_early_hex((unsigned long long)(unsigned)*device);
 			iterator->release();
 			matching->release();
-			return 0;
+			return 1;
 		}
 		iterator->release();
 		matching->release();
@@ -444,14 +462,39 @@ native_verified_block_volume_device(const char *uuid, dev_t *device, char *path,
 			/* No media with this UUID yet at all. */
 			kebab_early_mark(263, "volume lookup: uuid missing");
 			kebab_early_hex((unsigned long long)attempt);
-			return -1;
+			return 0;
+		}
+		if (attempt == 49) {
+			/* Last resort: the media names itself even though the BSD client
+			 * has not assigned a device number; mount() can still use the path. */
+			OSDictionary *again = IOService::serviceMatching("IOMedia");
+			OSIterator *it = (again != NULL) ? IOService::getMatchingServices(again) : NULL;
+			IORegistryEntry *one;
+			while (it != NULL && (one = OSDynamicCast(IORegistryEntry, it->getNextObject())) != NULL) {
+				OSString *mu = OSDynamicCast(OSString, one->getProperty("UUID"));
+				OSString *nm = OSDynamicCast(OSString, one->getProperty(kIOBSDNameKey));
+				if (mu != NULL && nm != NULL &&
+				    strcasecmp(mu->getCStringNoCopy(), uuid) == 0) {
+					*device = 0;
+					if (path != NULL && path_size != 0) {
+						snprintf(path, path_size, "/dev/%s", nm->getCStringNoCopy());
+					}
+					kebab_early_mark(272, "volume lookup: path only");
+					kebab_early_putc('\n');
+					if (it != NULL) it->release();
+					if (again != NULL) again->release();
+					return 1;
+				}
+			}
+			if (it != NULL) it->release();
+			if (again != NULL) again->release();
 		}
 		kebab_early_mark(263, "volume lookup: no BSD device yet");
 		kebab_early_hex((unsigned long long)withUuid);
 		kebab_early_hex((unsigned long long)withBsd);
 		IOSleep(100);
 	}
-	return -1;
+	return 0;
 }
 
 extern "C" int

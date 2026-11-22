@@ -171,6 +171,10 @@ kernel_args = [
   # console; the panel is the only log this board has.
   "startup_debug=1",
   "kt_fixed_zones=120",
+  # dyld's libIgnition asks security.mac.img4.ignition_blob; the Image4 handler
+  # never returns on this port, so 10063-kebab-image4-ignition.patch answers
+  # ENOENT for that one MIB while this argument is present (bring-up only).
+  "kebab_skip_ignition_blob=1",
 ]
 
 # OnePlus ABL on kebab: header v2 / 4096-byte pages. "fastboot boot" is refused by

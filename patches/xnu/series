@@ -113,3 +113,11 @@ pending/adapt-0367-after-0366.patch
 10063-kebab-ufs-systemos.patch
 10063-kebab-ufs-systemos-io.patch
 10063-kebab-cachemount-probe.patch
+10063-kebab-cacheauth-relax.patch
+10063-kebab-copyout-probe.patch
+10063-kebab-cacheerr-probe.patch
+10063-kebab-done-probe.patch
+10063-kebab-userland-probes.patch
+10063-kebab-console-direct.patch
+10063-kebab-image4-ignition.patch
+10063-kebab-cachepath-probe.patch

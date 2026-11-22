@@ -1,0 +1,74 @@
+diff --git a/bsd/kern/kern_newsysctl.c b/bsd/kern/kern_newsysctl.c
+index e4b17c6..a662cf6 100644
+--- a/bsd/kern/kern_newsysctl.c
++++ b/bsd/kern/kern_newsysctl.c
+@@ -1706,6 +1706,31 @@ found:
+ 		}
+ 	}
+ 
++#if defined(KEBAB)
++	/*
++	 * KEBAB bring-up: libIgnition asks for security.mac.img4.ignition_blob and
++	 * the Image4 handler never returns on this port. Until that is understood,
++	 * kebab_skip_ignition_blob=1 answers ENOENT so dyld can report and fall
++	 * back; the boot argument keeps the switch a payload-only change.
++	 */
++	if (!from_kernel && namestring != NULL && namestring_started &&
++	    strcmp(namestring, "security.mac.img4.ignition_blob") == 0) {
++		extern boolean_t PE_parse_boot_argn(const char *, void *, int);
++		static int kebab_skip_ignition = -1;
++		if (kebab_skip_ignition < 0) {
++			char value[8];
++			kebab_skip_ignition =
++			    PE_parse_boot_argn("kebab_skip_ignition_blob", value, sizeof(value)) ? 1 : 0;
++		}
++		if (kebab_skip_ignition) {
++			extern void kebab_early_mark(unsigned, const char *);
++			kebab_early_mark(290, "skip ignition_blob");
++			error = ENOENT;
++			goto err;
++		}
++	}
++#endif
++
+ 	/* If writing isn't allowed */
+ 	if (req->newptr && (!(oid->oid_kind & CTLFLAG_WR) ||
+ 	    ((oid->oid_kind & CTLFLAG_SECURE) && securelevel > 0))) {
+@@ -1784,6 +1809,18 @@ found:
+ 		}
+ 	}
+ #endif
++#if defined(KEBAB)
++	if (namestring != NULL) {
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		static unsigned marks;
++		if (marks < 6) {
++			marks++;
++			kebab_early_mark(291, "sysctl macf done");
++			kebab_early_hex((unsigned long long)(unsigned)error);
++		}
++	}
++#endif
+ 
+ 	/*
+ 	 * ...however, we still have to grab the mutex for those calls which
+@@ -1811,6 +1848,18 @@ found:
+ 		i = oid_handler(oid, oid->oid_arg1, oid->oid_arg2, req);
+ 	}
+ 	error = i;
++#if defined(KEBAB)
++	if (namestring != NULL) {
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		static unsigned marks;
++		if (marks < 6) {
++			marks++;
++			kebab_early_mark(292, "sysctl handler done");
++			kebab_early_hex((unsigned long long)(unsigned)error);
++		}
++	}
++#endif
+ 
+ 	if (unlocked_node_found) {
+ 		lck_mtx_unlock(&sysctl_unlocked_node_lock);

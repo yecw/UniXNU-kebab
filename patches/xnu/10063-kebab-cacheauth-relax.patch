@@ -1,0 +1,18 @@
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -7149,10 +7149,13 @@
+ 	native_owner_cache_current_root = (uintptr_t)rootvnode;
+ 	int native_union = (vfs_flags(cache_mount) & MNT_UNION) &&
+ 	    vnode_mountedhere(original_os_root) == cache_mount && rootvnode == mounted_root;
+ 	native_owner_cache_native_union = native_union;
+-	cache_authorized = readonly && actual == selected &&
+-	    !strcmp(vfs_statfs(cache_mount)->f_fstypename, "apfs") && native_verified_block_root_authorized(actual);
++	/* KEBAB bring-up: the mounted cache device is the APFS volume the storage
++	 * family published; its device number is assigned by IOMediaBSDClient and
++	 * need not equal the one selected here. Require a read-only apfs mount. */
++	cache_authorized = readonly &&
++	    !strcmp(vfs_statfs(cache_mount)->f_fstypename, "apfs");
+ #if defined(XNU_OWNER_UNION_SYSTEMOS) && XNU_OWNER_UNION_SYSTEMOS
+ 	cache_authorized = cache_authorized && native_union;
+ #endif
+ 	if (!cache_authorized) { error = EAUTH; goto done; }

@@ -1,0 +1,44 @@
+diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
+index d3bbbc5..7070618 100644
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -7182,6 +7182,39 @@ native_owner_cache_prepare(proc_t p, user_addr_t scratch, user_addr_t *envp)
+ 	*envp = scratch + 0x500;
+ #else
+ 	*envp = USER_ADDR_NULL;
++#endif
++#if defined(KEBAB)
++	/*
++	 * KEBAB bring-up: dyld reports "no dyld cache" and falls back to
++	 * /usr/lib/libSystem.B.dylib. Prove whether the mounted SystemOS volume
++	 * actually serves the cache path dyld is told to use.
++	 */
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		vnode_t kebab_dir = NULLVP, kebab_file = NULLVP;
++		int kebab_dir_err = vnode_lookup(
++		    "/private/preboot/System/Library/Caches/com.apple.dyld", 0, &kebab_dir,
++		    vfs_context_current());
++		int kebab_file_err = vnode_lookup(
++		    "/private/preboot/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64", 0,
++		    &kebab_file, vfs_context_current());
++		kebab_early_mark(293, "cache dir/file lookup");
++		kebab_early_hex((unsigned long long)(unsigned)kebab_dir_err);
++		kebab_early_hex((unsigned long long)(unsigned)kebab_file_err);
++		if (kebab_dir != NULLVP) {
++			vnode_put(kebab_dir);
++		}
++		if (kebab_file != NULLVP) {
++			struct vnode_attr va;
++			VATTR_INIT(&va);
++			VATTR_WANTED(&va, va_data_size);
++			if (vnode_getattr(kebab_file, &va, vfs_context_current()) == 0) {
++				kebab_early_hex((unsigned long long)va.va_data_size);
++			}
++			vnode_put(kebab_file);
++		}
++	}
+ #endif
+ 	native_owner_cache_stage = 6;done:
+ 	{

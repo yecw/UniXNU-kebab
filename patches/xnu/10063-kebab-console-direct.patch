@@ -1,0 +1,218 @@
+diff --git a/bsd/dev/arm/cons.c b/bsd/dev/arm/cons.c
+index 2db7fcb..acc8b22 100644
+--- a/bsd/dev/arm/cons.c
++++ b/bsd/dev/arm/cons.c
+@@ -60,6 +60,23 @@ set_constty(struct tty *new_tty)
+  */
+ extern struct tty *km_tty[1];
+ 
++/*
++ * KEBAB bring-up: /dev/console must never touch the km tty.
++ *
++ * The generic path (cnopen -> constty/km_tty[0] -> kmopen) has never been
++ * observed to return on this port, and it now hides the reason userland dies:
++ * dyld opens /dev/null (three fallback fds) and then /dev/console to print why
++ * the shared cache did not load, and the open hangs there. vcattach() has
++ * already set _constty by the time userland runs, so the constty branch is the
++ * one that hangs, not just the km_tty fallback.
++ *
++ * The console entry points below therefore ignore the tty entirely: open and
++ * close succeed without a tty lock, writes go through console_write() (the
++ * framebuffer putc that kprintf uses), reads return EOF, ioctl reports ENOTTY
++ * and select reports writable. This is a bring-up bypass; the real tty console
++ * needs hardware proof that kmopen returns.
++ */
++
+ /*
+  * cdevsw[] entries for the console device driver
+  */
+@@ -73,129 +90,124 @@ int cnselect(__unused dev_t dev, int flag, void * wql, proc_t p);
+ int
+ cnopen(__unused dev_t dev, int flag, int devtype, struct proc *pp)
+ {
+-	int error;
++	extern void kebab_early_mark(unsigned, const char *);
++	extern void kebab_early_hex(unsigned long long);
+ 	struct tty *constty = copy_constty();
+-	if (constty) {
+-		dev = constty->t_dev;
+-	} else {
+-		dev = km_tty[0]->t_dev;
+-	}
+-	error = (*cdevsw[major(dev)].d_open)(dev, flag, devtype, pp);
++	static unsigned marks;
++	(void)flag;
++	(void)devtype;
++	(void)pp;
+ 	if (constty != NULL) {
+ 		ttyfree(constty);
+ 	}
+-	return error;
++	if (marks < 4) {
++		marks++;
++		kebab_early_mark(282, "cnopen direct");
++		kebab_early_hex((unsigned long long)(unsigned)dev);
++	}
++	return 0;
+ }
+ 
+ 
+ int
+ cnclose(__unused dev_t dev, int flag, int mode, struct proc *pp)
+ {
+-	int error;
+ 	struct tty *constty = copy_constty();
+-	if (constty) {
+-		dev = constty->t_dev;
+-	} else {
+-		dev = km_tty[0]->t_dev;
+-	}
+-	error = (*cdevsw[major(dev)].d_close)(dev, flag, mode, pp);
++	(void)dev;
++	(void)flag;
++	(void)mode;
++	(void)pp;
+ 	if (constty != NULL) {
+ 		ttyfree(constty);
+ 	}
+-	return error;
++	return 0;
+ }
+ 
+ 
+ int
+ cnread(__unused dev_t dev, struct uio *uio, int ioflag)
+ {
+-	int error;
+ 	struct tty *constty = copy_constty();
+-	if (constty) {
+-		dev = constty->t_dev;
+-	} else {
+-		dev = km_tty[0]->t_dev;
+-	}
+-	error = (*cdevsw[major(dev)].d_read)(dev, uio, ioflag);
++	(void)dev;
++	(void)uio;
++	(void)ioflag;
+ 	if (constty != NULL) {
+ 		ttyfree(constty);
+ 	}
+-	return error;
++	return 0;                               /* a panel has nothing to read: EOF */
+ }
+ 
+ 
+ int
+ cnwrite(__unused dev_t dev, struct uio *uio, int ioflag)
+ {
+-	int error;
++	char buffer[128];
++	extern void kebab_early_putc(char);
++	extern void kebab_early_mark(unsigned, const char *);
++	extern void kebab_early_hex(unsigned long long);
+ 	struct tty *constty = copy_constty();
+-	if (constty) {
+-		dev = constty->t_dev;
+-	} else {
+-		dev = km_tty[0]->t_dev;
+-	}
+-	error = (*cdevsw[major(dev)].d_write)(dev, uio, ioflag);
++	static unsigned marks;
++	(void)dev;
++	(void)ioflag;
+ 	if (constty != NULL) {
+ 		ttyfree(constty);
+ 	}
+-	return error;
++	if (marks < 4) {
++		marks++;
++		kebab_early_mark(284, "cnwrite");
++		kebab_early_hex((unsigned long long)uio_resid(uio));
++	}
++	while (uio_resid(uio) > 0) {
++		ssize_t want = MIN(uio_resid(uio), (ssize_t)sizeof(buffer));
++		if (uiomove(buffer, (int)want, uio) != 0) {
++			return EFAULT;
++		}
++		/* console_write() feeds the console ring, and _cnputc() hands every
++		 * character to boot_progress_putc() while boot progress is active, so
++		 * userland bytes never reach the panel. The early framebuffer writer
++		 * is the same one the markers use and is always visible. */
++		for (int i = 0; i < (int)want; i++) {
++			kebab_early_putc(buffer[i]);
++		}
++	}
++	return 0;
+ }
+ 
+ 
+ int
+ cnioctl(__unused dev_t dev, u_long cmd, caddr_t addr, int flag, struct proc *p)
+ {
+-	int error;
+ 	struct tty *constty = copy_constty();
+ 	struct tty *freetp = NULL;
+-	if (constty) {
+-		dev = constty->t_dev;
+-	} else {
+-		dev = km_tty[0]->t_dev;
++	(void)dev;
++	(void)addr;
++	(void)flag;
++	if (constty != NULL) {
++		ttyfree(constty);
+ 	}
+-
+-	/*
+-	 * XXX This check prevents the cons.c code from being shared between
+-	 * XXX all architectures; it is probably not needed on ARM, either,
+-	 * XXX but I have no test platforms or ability to run a kernel.
+-	 *
+-	 * Superuser can always use this to wrest control of console
+-	 * output from the "virtual" console.
+-	 */
+-	if ((unsigned) cmd == TIOCCONS && constty) {
+-		error = proc_suser(p);
++	/* Superuser can always use this to wrest control of console output away. */
++	if ((unsigned)cmd == TIOCCONS) {
++		int error = proc_suser(p);
+ 		if (error) {
+-			goto finish;
++			return error;
+ 		}
+ 		freetp = set_constty(NULL);
+ 		if (freetp) {
+ 			ttyfree(freetp);
+-			freetp = NULL;
+ 		}
+-	} else {
+-		error = (*cdevsw[major(dev)].d_ioctl)(dev, cmd, addr, flag, p);
++		return 0;
+ 	}
+-finish:
+-	if (constty != NULL) {
+-		ttyfree(constty);
+-	}
+-	return error;
++	return ENOTTY;
+ }
+ 
+ 
+ int
+ cnselect(__unused dev_t dev, int flag, void *wql, struct proc *p)
+ {
+-	int error;
+ 	struct tty *constty = copy_constty();
+-	if (constty) {
+-		dev = constty->t_dev;
+-	} else {
+-		dev = km_tty[0]->t_dev;
+-	}
+-	error = (*cdevsw[major(dev)].d_select)(dev, flag, wql, p);
++	(void)wql;
+ 	if (constty != NULL) {
+ 		ttyfree(constty);
+ 	}
+-	return error;
++	return seltrue(dev, flag, p);           /* a panel is always writable */
+ }
