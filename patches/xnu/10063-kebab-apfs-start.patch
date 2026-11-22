@@ -1,0 +1,69 @@
+diff --git a/iokit/Kernel/arm/KebabKextStart.cpp b/iokit/Kernel/arm/KebabKextStart.cpp
+new file mode 100644
+--- /dev/null
++++ b/iokit/Kernel/arm/KebabKextStart.cpp
+@@ -0,0 +1,30 @@
++/*
++ * KEBAB: start a prelinked filesystem kext by identifier.
++ *
++ * Prelinked kexts are only loaded, not started: a filesystem kext registers its
++ * vfs operations from its start routine, and APFS only reaches that when its
++ * IOMedia personality matches. The BSD UFS driver publishes a bdevsw instead,
++ * so nothing ever matches and vfsconf stays without apfs. Starting the kext
++ * explicitly runs that registration; it is the same call the IOKit matching
++ * path makes once a media shows up.
++ */
++#include <IOKit/IOLib.h>
++#include <libkern/c++/OSKext.h>
++#include <libkern/OSReturn.h>
++
++extern "C" int
++kebab_start_kext(const char *identifier)
++{
++	OSReturn result;
++
++	if (identifier == NULL) {
++		return -1;
++	}
++	result = OSKext::loadKextWithIdentifier(identifier,
++	    /* allowDefer */ false,
++	    /* delayAutounload */ false,
++	    /* start */ kOSKextExcludeNone,
++	    /* startMatching */ kOSKextExcludeAll);
++	IOLog("KEBAB KEXT: start %s -> 0x%x\n", identifier, (unsigned)result);
++	return (int)result;
++}
+--- a/iokit/conf/files.arm64
++++ b/iokit/conf/files.arm64
+@@ -7,4 +7,7 @@
+ iokit/Kernel/arm/AppleARMSMP.cpp    					optional iokitcpp
+ 
+ # tightbeamc generated implementation files
+ ./Exclaves/IOService.tightbeam.c		optional iokitcpp config_exclaves
++
++# KEBAB: start a prelinked filesystem kext by identifier
++iokit/Kernel/arm/KebabKextStart.cpp		optional iokitcpp
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -798,8 +798,21 @@
+ 	/* Initialize the file systems. */
+ 	{ extern void kebab_early_mark(unsigned, const char *); kebab_early_mark(181, "bsd_init: IOKitInitializeTime done"); }
+ 	bsd_init_kprintf("calling vfsinit\n");
+ 	vfsinit();
++
++#if defined(KEBAB)
++	/* APFS is prelinked but never matches an IOMedia here; start it so it
++	 * registers with vfsconf before vfs_mountroot() walks the list. */
++	{
++		extern int kebab_start_kext(const char *);
++		int kext_result = kebab_start_kext("com.apple.filesystems.apfs");
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		kebab_early_mark(224, "bsd_init: apfs kext start");
++		kebab_early_hex((unsigned long long)(unsigned)kext_result);
++	}
++#endif
+ #if DEVELOPMENT || DEBUG
+ 	native_apfs_load_probe();
+ 	native_mobile_graphics_load_probe();
+ 	native_iogpu_load_probe();

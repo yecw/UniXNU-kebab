@@ -100,3 +100,4 @@ pending/adapt-0367-after-0366.patch
 10063-kebab-mountroot-probe.patch
 10063-kebab-rooterr-probe.patch
 10063-kebab-vfsprobe.patch
+10063-kebab-apfs-start.patch
