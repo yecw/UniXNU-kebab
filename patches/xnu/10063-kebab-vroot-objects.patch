@@ -1,0 +1,90 @@
+diff --git a/bsd/dev/kebab_ufs.c b/bsd/dev/kebab_ufs.c
+index 79c0b92..ae90acb 100644
+--- a/bsd/dev/kebab_ufs.c
++++ b/bsd/dev/kebab_ufs.c
+@@ -115,6 +115,10 @@ static struct {
+ 	uint64_t window_bytes;                  /* length of the BSD disk */
+ 	uint64_t systemos_off;                  /* SystemOS window (dyld shared cache) */
+ 	uint64_t systemos_bytes;
++	uint64_t vroot_os_off;                  /* OS.vroot hash-table object (flags=3) */
++	uint64_t vroot_os_bytes;
++	uint64_t vroot_systemos_off;            /* SystemOS.vroot hash-table object */
++	uint64_t vroot_systemos_bytes;
+ 	uint32_t secsize;                       /* logical sector size for the BSD layer */
+ 	int bmajor, cmajor;
+ 	dev_t bdev;
+@@ -866,6 +870,18 @@ ufs_apply_manifest(void)
+ 		    entry[8] == 0) {
+ 			su.systemos_off   = ufs_le64(entry + 32);
+ 			su.systemos_bytes = ufs_le64(entry + 40);
++		} else if (ufs_le32(entry + 52) == 3) {
++			/* v2 data object: the owner-verified-root hash tables live here
++			 * because they do not fit the boot payload. */
++			if (strncmp((const char *)entry, "OS.vroot", sizeof("OS.vroot")) == 0 &&
++			    entry[8] == 0) {
++				su.vroot_os_off   = ufs_le64(entry + 32);
++				su.vroot_os_bytes = ufs_le64(entry + 40);
++			} else if (strncmp((const char *)entry, "SystemOS.vroot",
++			    sizeof("SystemOS.vroot")) == 0 && entry[14] == 0) {
++				su.vroot_systemos_off   = ufs_le64(entry + 32);
++				su.vroot_systemos_bytes = ufs_le64(entry + 40);
++			}
+ 		}
+ 	}
+ 	if (size == 0) {
+@@ -1224,6 +1240,55 @@ kebab_ufs_systemos_bytes(void)
+ 	return bytes;
+ }
+ 
++/* Byte size of a v2 data object: 0 = OS.vroot, 1 = SystemOS.vroot. */
++uint64_t
++kebab_ufs_object_bytes(int which)
++{
++	uint64_t bytes;
++
++	lck_mtx_lock(&kebab_ufs_lock);
++	bytes = su.ready ? (which ? su.vroot_systemos_bytes : su.vroot_os_bytes) : 0;
++	lck_mtx_unlock(&kebab_ufs_lock);
++	return bytes;
++}
++
++/* Reads a v2 data object; the owner-verified-root table is only read once at boot. */
++int
++kebab_ufs_object_read(int which, void *buffer, uint64_t offset, size_t length)
++{
++	uint8_t *bytes = (uint8_t *)buffer;
++	uint64_t window_off, window_bytes;
++	int error = 0;
++
++	if (length == 0) {
++		return 0;
++	}
++	lck_mtx_lock(&kebab_ufs_lock);
++	window_off   = which ? su.vroot_systemos_off : su.vroot_os_off;
++	window_bytes = which ? su.vroot_systemos_bytes : su.vroot_os_bytes;
++	if (!su.ready || window_bytes == 0 || offset > window_bytes ||
++	    length > window_bytes - offset) {
++		lck_mtx_unlock(&kebab_ufs_lock);
++		return EINVAL;
++	}
++	for (size_t done = 0; done < length && !error; ) {
++		uint64_t pos = window_off + offset + done;
++		uint64_t lba = su.first_block + pos / UFS_BLOCK;
++		uint32_t skip = (uint32_t)(pos % UFS_BLOCK);
++		uint32_t want = MIN(length - done, BOUNCE_SIZE - skip);
++		uint32_t blocks = (skip + want + UFS_BLOCK - 1) / UFS_BLOCK;
++		void *bounce = (void *)(su.dma + DMA_BOUNCE);
++
++		error = ufs_read_blocks(lba, blocks);
++		if (!error) {
++			memcpy(bytes + done, (const char *)bounce + skip, want);
++		}
++		done += want;
++	}
++	lck_mtx_unlock(&kebab_ufs_lock);
++	return error;
++}
++
+ /* Reads inside the SystemOS window (the dyld shared cache volume). */
+ int
+ kebab_ufs_systemos_read(void *buffer, uint64_t offset, size_t length)

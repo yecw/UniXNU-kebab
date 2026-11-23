@@ -105,7 +105,10 @@ OSDefineOperatorMethods(IOBlockStorageDevice)
     blob = material / 'manifest.bin'
     if not blob.is_file():
         blob = material / 'manifest.header.bin'
-    if blob.is_file() and (material / 'trusted-key.bin').is_file():
+    blob_systemos = TREE / 'build/verified-root-SystemOS/manifest.header.bin'
+    if not blob_systemos.is_file():
+        blob_systemos = TREE / 'build/verified-root-SystemOS/manifest.bin'
+    if (blob.is_file() or blob_systemos.is_file()) and (material / 'trusted-key.bin').is_file():
         size = blob.stat().st_size
         material_asm.write_text(
             '.section __DATA_CONST,__const\n'
@@ -121,6 +124,17 @@ OSDefineOperatorMethods(IOBlockStorageDevice)
             '.globl _verified_root_manifest_bytes\n'
             '_verified_root_manifest_bytes:\n'
             f'.quad {size}\n')
+        if blob_systemos.is_file():
+            material_asm.write_text(material_asm.read_text() +
+                '.section __DATA_CONST,__const\n'
+                '.p2align 12\n'
+                '.globl _verified_root_manifest_systemos\n'
+                '_verified_root_manifest_systemos:\n'
+                f'.incbin "{blob_systemos}"\n'
+                '.section __DATA,__data\n'
+                '.globl _verified_root_manifest_systemos_bytes\n'
+                '_verified_root_manifest_systemos_bytes:\n'
+                f'.quad {blob_systemos.stat().st_size}\n')
         sources.append(material_asm)
     objects = []
     objcopy = shutil.which('llvm-objcopy') or '/opt/homebrew/opt/llvm/bin/llvm-objcopy'

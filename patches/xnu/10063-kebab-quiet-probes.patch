@@ -1,0 +1,70 @@
+diff --git a/osfmk/arm64/kebab_early.c b/osfmk/arm64/kebab_early.c
+index 74c5f7d..c7131a9 100644
+--- a/osfmk/arm64/kebab_early.c
++++ b/osfmk/arm64/kebab_early.c
+@@ -127,6 +127,43 @@ kebab_early_putc(char c)
+ 	early_col++;
+ }
+ 
++/* Bring-up probes that have served their purpose stay quiet by default: the
++ * panel is 60 rows and a flood of confirmed markers pushes the new evidence
++ * off the screen. kebab_probe_verbose=1 restores everything. */
++static bool kebab_mark_suppressed;
++
++static bool
++kebab_probe_verbose(void)
++{
++	static int verbose = -1;
++	if (verbose < 0) {
++		char value[8];
++		extern boolean_t PE_parse_boot_argn(const char *, void *, int);
++		verbose = PE_parse_boot_argn("kebab_probe_verbose", value, sizeof(value)) ? 1 : 0;
++	}
++	return verbose != 0;
++}
++
++static bool
++kebab_mark_kept(unsigned int stage)
++{
++	switch (stage) {
++	case 243:   /* root not sealed, continuing */
++	case 258:   /* panic text */
++	case 260:   /* volume lookup matched */
++	case 262:   /* cache mount returned */
++	case 270:   /* cache done stage/error */
++	case 271:   /* volume lookup requested */
++	case 295:   /* fcntl addsigs enter */
++	case 296:   /* fcntl addsigs result */
++	case 297:   /* owner-verified window */
++	case 299:   /* root verified query */
++		return true;
++	default:
++		return false;
++	}
++}
++
+ void
+ kebab_early_mark(unsigned int stage, const char *label)
+ {
+@@ -135,6 +172,11 @@ kebab_early_mark(unsigned int stage, const char *label)
+ 	if ((stage == 50) || (stage == 51)) {
+ 		return;
+ 	}
++	if (!kebab_probe_verbose() && !kebab_mark_kept(stage)) {
++		kebab_mark_suppressed = true;
++		return;
++	}
++	kebab_mark_suppressed = false;
+ 	char number[4];
+ 	unsigned int n = 0;
+ 
+@@ -166,6 +208,9 @@ void
+ kebab_early_hex(uint64_t value)
+ {
+ 	char digits[19];
++	if (kebab_mark_suppressed) {
++		return;
++	}
+ 	int i;
+ 
+ 	digits[0] = '0';

@@ -46,6 +46,10 @@ extern "C" const struct vr_crypto vr_xnu_crypto;
 extern "C" const uint8_t verified_root_manifest[];
 extern "C" const uint64_t verified_root_manifest_bytes;
 extern "C" const uint8_t verified_root_key[];
+extern "C" const uint8_t verified_root_manifest_systemos[];
+extern "C" const uint64_t verified_root_manifest_systemos_bytes;
+extern "C" uint64_t kebab_ufs_object_bytes(int which);
+extern "C" int kebab_ufs_object_read(int which, void *buffer, uint64_t offset, size_t length);
 extern "C" int kebab_verified_root_configured(void);
 extern "C" boolean_t PE_parse_boot_argn(const char *, void *, int);
 #endif
@@ -91,11 +95,14 @@ private:
 #if defined(NATIVE_VERIFIED_BLOCK) && NATIVE_VERIFIED_BLOCK
 public:
 	bool authenticatesVolume(const char *uuid, uint8_t *digest) const;
+	bool manifestDigest(const char *uuid, uint8_t *digest) const;
+	bool signedUuid(char expected[37]) const;
 private:
 	bool configureVerification(void);
 	int  verifiedTransfer(IOMemoryDescriptor *buffer, UInt64 offset, UInt64 length);
 	bool        fVerified = false;
 	bool        fHeaderOnly = false;
+	uint64_t    fEnvelopeBytes = 0;
 	struct vr_view fView = {};
 	vm_offset_t fStore = 0;
 	vm_size_t   fStoreBytes = 0;
@@ -106,6 +113,7 @@ private:
 OSDefineMetaClassAndStructors(KebabBlockStorageDevice, IOBlockStorageDevice);
 
 static KebabBlockStorageDevice *kebab_block_device;
+static KebabBlockStorageDevice *kebab_verified_windows[2];
 static char kebabVendor[]  = "KEBAB";
 static char kebabProduct[] = "UFS root";
 static char kebabSystemOsProduct[] = "UFS SystemOS";
@@ -337,6 +345,7 @@ KebabBlockStorageDevice::start(IOService *provider)
 	setProperty(kIOBlockStorageDeviceTypeKey, kIOBlockStorageDeviceTypeGeneric);
 #if defined(NATIVE_VERIFIED_BLOCK) && NATIVE_VERIFIED_BLOCK
 	if (configureVerification()) {
+		kebab_verified_windows[fSystemOs ? 1 : 0] = this;
 		kebab_early_mark(297, "vroot: window verified");
 		kebab_early_hex(fView.block_count);
 	} else {
@@ -429,18 +438,23 @@ kebab_blockstorage_dump(void)
 bool
 KebabBlockStorageDevice::configureVerification(void)
 {
+	const uint8_t *manifest = fSystemOs ? verified_root_manifest_systemos : verified_root_manifest;
+	uint64_t manifestBytes = fSystemOs ? verified_root_manifest_systemos_bytes :
+	    verified_root_manifest_bytes;
 	uint64_t capacity = bytes();
 	uint64_t image_bytes = 0;
-	vm_size_t table;
-	vm_size_t total;
+	uint64_t blockCount = 0;
+	uint64_t tableBytes = 0;
+	uint64_t envelopeBytes;
+	bool headerOnly;
+	int  opened;
 
-	if (!kebab_verified_root_configured() || capacity == 0) {
+	if (capacity == 0 || manifestBytes == 0) {
 		return false;
 	}
-	bool headerOnly = (verified_root_manifest_bytes ==
-	    (uint64_t)(VR_HEADER_BYTES + VR_SIGNATURE_BYTES));
 	for (unsigned i = 0; i < 8; i++) {
-		image_bytes |= (uint64_t)verified_root_manifest[24 + i] << (8 * i);
+		image_bytes |= (uint64_t)manifest[24 + i] << (8 * i);
+		blockCount |= (uint64_t)manifest[32 + i] << (8 * i);
 	}
 	if (image_bytes != capacity) {
 		kebab_early_mark(297, "vroot: capacity mismatch");
@@ -448,22 +462,45 @@ KebabBlockStorageDevice::configureVerification(void)
 		kebab_early_hex(capacity);
 		return false;
 	}
-	table = round_page((vm_size_t)verified_root_manifest_bytes);
-	total = table + PAGE_SIZE;
+	/*
+	 * The hash table is 32 bytes per 4096-byte block and does not fit the boot
+	 * payload, so unixnu userdata carries it as a v2 data object. When the
+	 * header is linked alone, read the table from that object and build the full
+	 * signed envelope in kernel memory; without the object the header still
+	 * authorises the window (no per-block verification).
+	 */
+	headerOnly = (manifestBytes == (uint64_t)(VR_HEADER_BYTES + VR_SIGNATURE_BYTES));
+	envelopeBytes = manifestBytes;
+	if (headerOnly) {
+		uint64_t objectBytes = kebab_ufs_object_bytes(fSystemOs ? 1 : 0);
+		tableBytes = blockCount * 32;
+		if (objectBytes == tableBytes && tableBytes != 0) {
+			envelopeBytes = manifestBytes + tableBytes;
+		}
+	}
+	vm_size_t total = round_page((vm_size_t)envelopeBytes) + PAGE_SIZE;
 	if (kmem_alloc(kernel_map, &fStore, total,
 	    static_cast<kma_flags_t>(KMA_KOBJECT | KMA_DATA),
 	    VM_KERN_MEMORY_SECURITY) != KERN_SUCCESS) {
 		return false;
 	}
 	fStoreBytes = total;
-	memcpy((void *)fStore, verified_root_manifest, (size_t)verified_root_manifest_bytes);
-	memcpy((void *)(fStore + table), verified_root_key, VR_KEY_BYTES);
+	memcpy((void *)fStore, manifest, (size_t)manifestBytes);
+	if (envelopeBytes > manifestBytes) {
+		if (kebab_ufs_object_read(fSystemOs ? 1 : 0, (void *)(fStore + manifestBytes),
+		    0, (size_t)tableBytes) != 0) {
+			kebab_early_mark(297, "vroot: table read failed");
+			return false;
+		}
+		headerOnly = false;
+	}
+	memcpy((void *)(fStore + round_page((vm_size_t)envelopeBytes)), verified_root_key, VR_KEY_BYTES);
 	(void)vm_map_protect(kernel_map, fStore, fStore + total, VM_PROT_READ, TRUE);
-	int opened = headerOnly ?
-	    vr_open_header((const uint8_t *)fStore, (size_t)verified_root_manifest_bytes,
-	        verified_root_key, 1, &vr_xnu_crypto, &fView) :
-	    vr_open((const uint8_t *)fStore, (size_t)verified_root_manifest_bytes,
-	        verified_root_key, 1, &vr_xnu_crypto, &fView);
+	opened = headerOnly ?
+	    vr_open_header((const uint8_t *)fStore, (size_t)envelopeBytes, verified_root_key, 1,
+	        &vr_xnu_crypto, &fView) :
+	    vr_open((const uint8_t *)fStore, (size_t)envelopeBytes, verified_root_key, 1,
+	        &vr_xnu_crypto, &fView);
 	if (opened != VR_OK) {
 		kebab_early_mark(297, "vroot: open failed");
 		kebab_early_hex((unsigned long long)(unsigned)opened);
@@ -476,19 +513,20 @@ KebabBlockStorageDevice::configureVerification(void)
 		}
 	}
 	fHeaderOnly = headerOnly;
+	fEnvelopeBytes = envelopeBytes;
 	fVerified = true;
 	return true;
 }
 
+/* Format the signed volume UUID as the upper-case string IOMedia carries. */
 bool
-KebabBlockStorageDevice::authenticatesVolume(const char *uuid, uint8_t *digest) const
+KebabBlockStorageDevice::signedUuid(char expected[37]) const
 {
 	static const char digits[] = "0123456789ABCDEF";
 	static const int dash_after[4] = { 3, 5, 7, 9 };
-	char expected[37];
-	int  position = 0;
+	int position = 0;
 
-	if (!fVerified || uuid == NULL) {
+	if (!fVerified) {
 		return false;
 	}
 	for (unsigned i = 0; i < 16; i++) {
@@ -501,6 +539,36 @@ KebabBlockStorageDevice::authenticatesVolume(const char *uuid, uint8_t *digest) 
 		}
 	}
 	expected[position] = '\0';
+	return true;
+}
+
+/*
+ * The offline owner boot manifest publishes SHA-384 over the authenticated
+ * envelope of each volume (manifest + signed header + hash table).
+ */
+bool
+KebabBlockStorageDevice::manifestDigest(const char *uuid, uint8_t *digest) const
+{
+	char expected[37];
+
+	if (digest == NULL || uuid == NULL || !signedUuid(expected) || strcmp(uuid, expected) != 0) {
+		return false;
+	}
+	SHA384_CTX context;
+	SHA384_Init(&context);
+	SHA384_Update(&context, (const void *)fStore, (size_t)fEnvelopeBytes);
+	SHA384_Final(digest, &context);
+	return true;
+}
+
+bool
+KebabBlockStorageDevice::authenticatesVolume(const char *uuid, uint8_t *digest) const
+{
+	char expected[37];
+
+	if (!fVerified || uuid == NULL || !signedUuid(expected)) {
+		return false;
+	}
 	if (strcmp(uuid, expected) != 0) {
 		return false;
 	}
@@ -655,6 +723,30 @@ native_verified_block_root_authorized(dev_t device)
 		}
 	}
 	return 1;
+}
+
+/* The boot manifest asks each verified window for the envelope it authenticated. */
+extern "C" int
+native_verified_block_manifest_sha384(dev_t device, const char *uuid, uint8_t digest[48])
+{
+#if defined(NATIVE_VERIFIED_BLOCK) && NATIVE_VERIFIED_BLOCK
+	(void)device;
+	if (uuid == NULL || digest == NULL) {
+		return 0;
+	}
+	for (unsigned i = 0; i < 2; i++) {
+		if (kebab_verified_windows[i] != NULL &&
+		    kebab_verified_windows[i]->manifestDigest(uuid, digest)) {
+			return 1;
+		}
+	}
+	return 0;
+#else
+	(void)device;
+	(void)uuid;
+	(void)digest;
+	return 0;
+#endif
 }
 
 /*

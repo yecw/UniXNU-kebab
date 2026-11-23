@@ -134,3 +134,6 @@ pending/adapt-0367-after-0366.patch
 10063-kebab-dsc-macf-narrow.patch
 10063-kebab-dsc-macf-devid.patch
 10063-kebab-boot-manifest.patch
+10063-kebab-vroot-objects.patch
+10063-kebab-manifest-weak.patch
+10063-kebab-quiet-probes.patch

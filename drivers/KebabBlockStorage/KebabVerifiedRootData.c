@@ -12,6 +12,8 @@
 
 __attribute__((weak)) const uint8_t verified_root_manifest[1] = { 0 };
 __attribute__((weak)) const uint64_t verified_root_manifest_bytes = 0;
+__attribute__((weak)) const uint8_t verified_root_manifest_systemos[1] = { 0 };
+__attribute__((weak)) const uint64_t verified_root_manifest_systemos_bytes = 0;
 __attribute__((weak)) const uint8_t verified_root_key[395] = { 0 };
 
 int
