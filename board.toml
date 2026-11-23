@@ -13,7 +13,9 @@ description = "OnePlus 8T"
 kit = "kebab"        # device package/ appears as kits/kebab
 
 [components]
-include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "DarwinBoot"]
+# VerifiedRoot supplies kits/VerifiedRoot (the owner-verified-root C provider and the
+# manifest/key tooling) for the storage driver's window authentication.
+include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "DarwinBoot", "VerifiedRoot"]
 
 # Donor IPSW: the kernel is built from Apple's XNU source and prelinked against
 # this kernelcache, so the donor only has to match the XNU version and prelink
@@ -180,6 +182,9 @@ kernel_args = [
   # reference rk20port uses level 1, which looks for the shared cache in the
   # cryptexes we already mounted.
   "ignition_level=1",
+  # Owner-verified root: the OS window must match the owner-signed manifest
+  # (10063-kebab-boot-manifest material + KebabBlockStorage verification).
+  "kebab_verify_root=1",
   "kebab_skip_dsc_macf=1",
   # Bring-up instrument: panic before exec with the cache-path probe result, so
   # the numbers are visible on the panic screen (marks are painted over).

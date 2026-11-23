@@ -24,7 +24,15 @@ def sha(path):
 
 
 def compile_command(record, source, output, includes, extra):
-    arguments = record['arguments']
+    arguments = list(record['arguments'])
+    if str(source).endswith('.S'):
+        arguments = ['-xassembler-with-cpp' if a == '-xc++' else a
+                     for a in arguments if a != '--driver-mode=g++' and not a.startswith('-std=gnu++')]
+    elif str(source).endswith('.c'):
+        arguments = ['-xc' if a == '-xc++' else
+                     '--driver-mode=gcc' if a == '--driver-mode=g++' else
+                     '-std=gnu17' if a.startswith('-std=gnu++') else a
+                     for a in arguments]
     command = [arguments[0], *includes]
     index = 1
     replaced = False
@@ -79,22 +87,55 @@ IOBlockStorageDevice::MetaClass::MetaClass()
 OSDefineAbstractStructors(IOBlockStorageDevice, IOService)
 OSDefineOperatorMethods(IOBlockStorageDevice)
 '''))
-    includes = ['-I', str(headers), '-I', str(TREE / '.cache/xnu-work/osfmk'),
-                '-I', str(TREE / '.cache/xnu-work/iokit')]
     device = Path(os.environ['UNIXNU_DEVICE'])
+    kit = TREE / 'kits/VerifiedRoot'
+    verified_include = kit / 'include'
+    includes = ['-I', str(headers), '-I', str(TREE / '.cache/xnu-work/osfmk'),
+                '-I', str(TREE / '.cache/xnu-work/iokit'),
+                '-I', str(verified_include),
+                '-I', str(device / 'drivers/VirtioMmioBlock')]
     sources = [base,
                device / 'drivers/KebabBlockStorage/KebabSourceStorageParent.cpp',
-               device / 'drivers/KebabBlockStorage/KebabBlockStorageDevice.cpp']
+               device / 'drivers/KebabBlockStorage/KebabBlockStorageDevice.cpp',
+               kit / 'src/verified_root.c',
+               kit / 'adapters/xnu_crypto.c',
+               device / 'drivers/KebabBlockStorage/KebabVerifiedRootData.c']
+    material = TREE / 'build/verified-root-OS'
+    material_asm = out / 'KebabRootMaterial.S'
+    blob = material / 'manifest.bin'
+    if not blob.is_file():
+        blob = material / 'manifest.header.bin'
+    if blob.is_file() and (material / 'trusted-key.bin').is_file():
+        size = blob.stat().st_size
+        material_asm.write_text(
+            '.section __DATA_CONST,__const\n'
+            '.p2align 12\n'
+            '.globl _verified_root_manifest\n'
+            '_verified_root_manifest:\n'
+            f'.incbin "{blob}"\n'
+            '.p2align 4\n'
+            '.globl _verified_root_key\n'
+            '_verified_root_key:\n'
+            f'.incbin "{material / "trusted-key.bin"}"\n'
+            '.section __DATA,__data\n'
+            '.globl _verified_root_manifest_bytes\n'
+            '_verified_root_manifest_bytes:\n'
+            f'.quad {size}\n')
+        sources.append(material_asm)
     objects = []
     objcopy = shutil.which('llvm-objcopy') or '/opt/homebrew/opt/llvm/bin/llvm-objcopy'
     for source in sources:
         obj = out / (source.stem + '.o')
-        command = compile_command(record, source, obj, includes, [])
+        command = compile_command(record, source, obj, includes,
+                                  ['-DNATIVE_VERIFIED_BLOCK=1'])
         result = subprocess.run(command, capture_output=True, text=True, cwd=record['directory'])
         (out / (source.stem + '.log')).write_text(result.stderr)
         if result.returncode != 0:
             sys.stderr.write(result.stderr[-4000:])
             raise SystemExit(f'{source}: compile failed')
+        if source.name == 'KebabRootMaterial.S':
+            objects.append(obj)
+            continue
         if source.name in ('IOBlockStorageDevice.cpp', 'KebabBlockStorageDevice.cpp'):
             # The kernel would run these constructors from __mod_init_func during
             # OSRuntimeInitializeCPP, before any prelinked kext class exists; the

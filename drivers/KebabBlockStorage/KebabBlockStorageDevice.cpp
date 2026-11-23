@@ -22,6 +22,8 @@
 #include <sys/types.h>
 #include <sys/conf.h>
 #include <IOKit/IOBSD.h>
+#include <vm/vm_kern.h>
+#include <libkern/crypto/sha2.h>
 
 extern "C" {
 void     kebab_early_mark(unsigned stage, const char *label);
@@ -37,6 +39,16 @@ int      kebab_blockstorage_start(void);
 }
 
 #define KEBAB_BLOCK_CHUNK (64 * 1024)
+
+#if defined(NATIVE_VERIFIED_BLOCK) && NATIVE_VERIFIED_BLOCK
+#include "verified_root.h"
+extern "C" const struct vr_crypto vr_xnu_crypto;
+extern "C" const uint8_t verified_root_manifest[];
+extern "C" const uint64_t verified_root_manifest_bytes;
+extern "C" const uint8_t verified_root_key[];
+extern "C" int kebab_verified_root_configured(void);
+extern "C" boolean_t PE_parse_boot_argn(const char *, void *, int);
+#endif
 
 class KebabBlockStorageDevice : public IOBlockStorageDevice
 {
@@ -76,6 +88,19 @@ private:
 		return fSystemOs ? kebab_ufs_systemos_read(buffer, offset, length)
 		                 : kebab_ufs_raw_read(buffer, offset, length);
 	}
+#if defined(NATIVE_VERIFIED_BLOCK) && NATIVE_VERIFIED_BLOCK
+public:
+	bool authenticatesVolume(const char *uuid, uint8_t *digest) const;
+private:
+	bool configureVerification(void);
+	int  verifiedTransfer(IOMemoryDescriptor *buffer, UInt64 offset, UInt64 length);
+	bool        fVerified = false;
+	bool        fHeaderOnly = false;
+	struct vr_view fView = {};
+	vm_offset_t fStore = 0;
+	vm_size_t   fStoreBytes = 0;
+	uint8_t    *fSnapshot = nullptr;
+#endif
 };
 
 OSDefineMetaClassAndStructors(KebabBlockStorageDevice, IOBlockStorageDevice);
@@ -98,6 +123,17 @@ KebabBlockStorageDevice::init(OSDictionary *properties)
 void
 KebabBlockStorageDevice::free(void)
 {
+#if defined(NATIVE_VERIFIED_BLOCK) && NATIVE_VERIFIED_BLOCK
+	if (fSnapshot != nullptr) {
+		IOFree(fSnapshot, KEBAB_BLOCK_CHUNK);
+		fSnapshot = nullptr;
+	}
+	if (fStore != 0) {
+		kmem_free(kernel_map, fStore, fStoreBytes);
+		fStore = 0;
+		fVerified = false;
+	}
+#endif
 	IOBlockStorageDevice::free();
 }
 
@@ -114,6 +150,11 @@ KebabBlockStorageDevice::transfer(IOMemoryDescriptor *buffer, UInt64 offset, UIn
 	if (offset > bytes() || length > bytes() - offset) {
 		return EINVAL;
 	}
+#if defined(NATIVE_VERIFIED_BLOCK) && NATIVE_VERIFIED_BLOCK
+	if (fVerified && !fHeaderOnly) {
+		return verifiedTransfer(buffer, offset, length);
+	}
+#endif
 	staging = (uint8_t *)IOMalloc(KEBAB_BLOCK_CHUNK);
 	if (staging == NULL) {
 		return ENOMEM;
@@ -294,6 +335,15 @@ KebabBlockStorageDevice::start(IOService *provider)
 		return false;
 	}
 	setProperty(kIOBlockStorageDeviceTypeKey, kIOBlockStorageDeviceTypeGeneric);
+#if defined(NATIVE_VERIFIED_BLOCK) && NATIVE_VERIFIED_BLOCK
+	if (configureVerification()) {
+		kebab_early_mark(297, "vroot: window verified");
+		kebab_early_hex(fView.block_count);
+	} else {
+		kebab_early_mark(298, "vroot: window unverified");
+		kebab_early_hex(bytes());
+	}
+#endif
 	return true;
 }
 
@@ -368,24 +418,265 @@ kebab_blockstorage_dump(void)
  * instead of tracking the volume ourselves.
  */
 
+#if defined(NATIVE_VERIFIED_BLOCK) && NATIVE_VERIFIED_BLOCK
+/*
+ * Owner-verified root, ported from the reference provider
+ * (drivers/VirtioMmioBlock/NativeVirtioBlock.cpp): the manifest is matched to
+ * this window by its signed image_bytes, copied with the trusted key into
+ * read-only kernel memory, and every 4096-byte block read through this device
+ * is checked against the signed hash table before it reaches the caller.
+ */
+bool
+KebabBlockStorageDevice::configureVerification(void)
+{
+	uint64_t capacity = bytes();
+	uint64_t image_bytes = 0;
+	vm_size_t table;
+	vm_size_t total;
+
+	if (!kebab_verified_root_configured() || capacity == 0) {
+		return false;
+	}
+	bool headerOnly = (verified_root_manifest_bytes ==
+	    (uint64_t)(VR_HEADER_BYTES + VR_SIGNATURE_BYTES));
+	for (unsigned i = 0; i < 8; i++) {
+		image_bytes |= (uint64_t)verified_root_manifest[24 + i] << (8 * i);
+	}
+	if (image_bytes != capacity) {
+		kebab_early_mark(297, "vroot: capacity mismatch");
+		kebab_early_hex(image_bytes);
+		kebab_early_hex(capacity);
+		return false;
+	}
+	table = round_page((vm_size_t)verified_root_manifest_bytes);
+	total = table + PAGE_SIZE;
+	if (kmem_alloc(kernel_map, &fStore, total,
+	    static_cast<kma_flags_t>(KMA_KOBJECT | KMA_DATA),
+	    VM_KERN_MEMORY_SECURITY) != KERN_SUCCESS) {
+		return false;
+	}
+	fStoreBytes = total;
+	memcpy((void *)fStore, verified_root_manifest, (size_t)verified_root_manifest_bytes);
+	memcpy((void *)(fStore + table), verified_root_key, VR_KEY_BYTES);
+	(void)vm_map_protect(kernel_map, fStore, fStore + total, VM_PROT_READ, TRUE);
+	int opened = headerOnly ?
+	    vr_open_header((const uint8_t *)fStore, (size_t)verified_root_manifest_bytes,
+	        verified_root_key, 1, &vr_xnu_crypto, &fView) :
+	    vr_open((const uint8_t *)fStore, (size_t)verified_root_manifest_bytes,
+	        verified_root_key, 1, &vr_xnu_crypto, &fView);
+	if (opened != VR_OK) {
+		kebab_early_mark(297, "vroot: open failed");
+		kebab_early_hex((unsigned long long)(unsigned)opened);
+		return false;
+	}
+	if (!headerOnly) {
+		fSnapshot = (uint8_t *)IOMalloc(KEBAB_BLOCK_CHUNK);
+		if (fSnapshot == nullptr) {
+			return false;
+		}
+	}
+	fHeaderOnly = headerOnly;
+	fVerified = true;
+	return true;
+}
+
+bool
+KebabBlockStorageDevice::authenticatesVolume(const char *uuid, uint8_t *digest) const
+{
+	static const char digits[] = "0123456789ABCDEF";
+	static const int dash_after[4] = { 3, 5, 7, 9 };
+	char expected[37];
+	int  position = 0;
+
+	if (!fVerified || uuid == NULL) {
+		return false;
+	}
+	for (unsigned i = 0; i < 16; i++) {
+		expected[position++] = digits[(fView.volume_uuid[i] >> 4) & 15];
+		expected[position++] = digits[fView.volume_uuid[i] & 15];
+		for (unsigned d = 0; d < 4; d++) {
+			if (dash_after[d] == (int)i) {
+				expected[position++] = '-';
+			}
+		}
+	}
+	expected[position] = '\0';
+	if (strcmp(uuid, expected) != 0) {
+		return false;
+	}
+	if (digest != NULL && fView.hashes != NULL) {
+		SHA384_CTX context;
+		SHA384_Init(&context);
+		SHA384_Update(&context, (const void *)fStore,
+		    VR_HEADER_BYTES + VR_SIGNATURE_BYTES + (size_t)(fView.block_count * 32));
+		SHA384_Final(digest, &context);
+	}
+	return true;
+}
+
+int
+KebabBlockStorageDevice::verifiedTransfer(IOMemoryDescriptor *buffer, UInt64 offset, UInt64 length)
+{
+	const UInt64 align = VR_BLOCK_BYTES;
+	const UInt64 end = offset + length;
+	UInt64 span = offset & ~(align - 1);
+
+	while (span < end) {
+		UInt64 want = KEBAB_BLOCK_CHUNK;
+		UInt64 from, to;
+		int    error;
+
+		if (span + want > ((end + align - 1) & ~(align - 1))) {
+			want = ((end + align - 1) & ~(align - 1)) - span;
+		}
+		error = readAt(fSnapshot, span, (size_t)want);
+		if (error != 0) {
+			return error;
+		}
+		for (UInt64 at = 0; at < want; at += align) {
+			UInt64 position = span + at;
+			UInt64 index = position / align;
+			UInt64 remaining = fView.image_bytes - position;
+			size_t bytes = (size_t)((remaining < align) ? remaining : align);
+
+			if (vr_verify_block(&fView, index, fSnapshot + at, bytes, &vr_xnu_crypto) != VR_OK) {
+				return EIO;
+			}
+		}
+		from = (span > offset) ? span : offset;
+		to = ((span + want) < end) ? (span + want) : end;
+		if (to > from) {
+			IOByteCount moved = buffer->writeBytes(from - offset, fSnapshot + (from - span),
+			    (IOByteCount)(to - from));
+			if (moved != (IOByteCount)(to - from)) {
+				return EFAULT;
+			}
+		}
+		span += want;
+	}
+	return 0;
+}
+#endif /* NATIVE_VERIFIED_BLOCK */
+
 /*
  * The offline SystemOS mount only proceeds when the root device passes the
  * owner-root binding check. This port mounts an unsealed OS window that bsd_init
  * already accepted (mark 243), so the binding is "the BSD disk the UFS driver
  * published"; anything else stays unauthorized.
  */
+#if defined(NATIVE_VERIFIED_BLOCK) && NATIVE_VERIFIED_BLOCK
+/*
+ * Find the one IOMedia whose BSD client carries this device number and answer
+ * with the UUID of its APFS volume; the caller walks the provider chain from
+ * the returned entry to the kebab window that published it.
+ */
+static IORegistryEntry *
+kebabMediaForDevice(dev_t device, char *uuid, size_t uuidSize)
+{
+	OSDictionary *matching = IOService::serviceMatching("IOMedia");
+	IORegistryEntry *found = NULL;
+	unsigned matches = 0;
+
+	if (matching == NULL) {
+		return NULL;
+	}
+	OSIterator *iterator = IOService::getMatchingServices(matching);
+	if (iterator != NULL) {
+		IORegistryEntry *entry;
+		while ((entry = OSDynamicCast(IORegistryEntry, iterator->getNextObject())) != NULL) {
+			OSNumber *majorNumber = OSDynamicCast(OSNumber, entry->getProperty(kIOBSDMajorKey));
+			OSNumber *minorNumber = OSDynamicCast(OSNumber, entry->getProperty(kIOBSDMinorKey));
+			OSString *identity = OSDynamicCast(OSString, entry->getProperty("UUID"));
+			if (majorNumber == NULL || minorNumber == NULL || identity == NULL ||
+			    (int)majorNumber->unsigned32BitValue() != (int)major(device) ||
+			    (int)minorNumber->unsigned32BitValue() != (int)minor(device) ||
+			    identity->getLength() != 36) {
+				continue;
+			}
+			matches++;
+			if (matches == 1) {
+				found = entry;
+				found->retain();
+				strlcpy(uuid, identity->getCStringNoCopy(), uuidSize);
+			}
+		}
+		iterator->release();
+	}
+	matching->release();
+	if (matches != 1) {
+		OSSafeReleaseNULL(found);
+	}
+	return found;
+}
+#endif /* NATIVE_VERIFIED_BLOCK */
+
 extern "C" int
 native_verified_block_root_authorized(dev_t device)
 {
+#if defined(NATIVE_VERIFIED_BLOCK) && NATIVE_VERIFIED_BLOCK
+	static int enabled = -1;
+	char value[8];
+
+	if (enabled < 0) {
+		enabled = PE_parse_boot_argn("kebab_verify_root", value, sizeof(value)) ? 1 : 0;
+	}
+	if (enabled) {
+		char uuid[37];
+		IORegistryEntry *media = kebabMediaForDevice(device, uuid, sizeof(uuid));
+		bool authorized = false;
+		if (media != NULL) {
+			IORegistryEntry *cursor = media;
+			for (int depth = 0; depth < 64 && cursor != NULL; depth++) {
+				KebabBlockStorageDevice *window = OSDynamicCast(KebabBlockStorageDevice, cursor);
+				if (window != NULL) {
+					authorized = window->authenticatesVolume(uuid, NULL);
+					break;
+				}
+				cursor = cursor->getParentEntry(gIOServicePlane);
+			}
+			media->release();
+		}
+		kebab_early_mark(299, "root: verified query");
+		kebab_early_hex((unsigned long long)(unsigned)device);
+		kebab_early_hex((unsigned long long)(authorized ? 1 : 0));
+		return authorized ? 1 : 0;
+	}
+#endif
 	/*
-	 * Bring-up bypass. The root here is the unsealed OS window that bsd_init
-	 * already accepted (mark 243); the device number bsd_init saw is the APFS
-	 * volume's BSD client, not the UFS bdevsw device, so comparing numbers is
-	 * meaningless. Accept the mounted root and let the offline SystemOS mount
-	 * proceed; the verified-root kit replaces this for production.
+	 * Bring-up fallback, selected by the absence of kebab_verify_root: the root
+	 * here is the unsealed OS window that bsd_init accepted (mark 243), and the
+	 * device number is the APFS volume's BSD client, not the UFS window.
 	 */
-	(void)device;
+	{
+		static bool reported = false;
+		if (!reported) {
+			reported = true;
+			kebab_early_mark(298, "root: unverified bring-up");
+		}
+	}
 	return 1;
+}
+
+/*
+ * Weak hook the reference provider calls while walking a media's provider
+ * chain: -1 when this provider is not a kebab window, 1 when the window was
+ * signed for that UUID, 0 when it is a kebab window but does not match.
+ */
+extern "C" int
+native_ufs_block_authenticates(IOService *provider, const char *uuid, uint8_t *digest)
+{
+#if defined(NATIVE_VERIFIED_BLOCK) && NATIVE_VERIFIED_BLOCK
+	KebabBlockStorageDevice *window = OSDynamicCast(KebabBlockStorageDevice, provider);
+	if (window == NULL) {
+		return -1;
+	}
+	return window->authenticatesVolume(uuid, digest) ? 1 : 0;
+#else
+	(void)provider;
+	(void)uuid;
+	(void)digest;
+	return -1;
+#endif
 }
 
 /*
