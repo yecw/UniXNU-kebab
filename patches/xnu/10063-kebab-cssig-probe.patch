@@ -1,0 +1,28 @@
+diff --git a/bsd/kern/ubc_subr.c b/bsd/kern/ubc_subr.c
+index 76c97a9..3a7ad9e 100644
+--- a/bsd/kern/ubc_subr.c
++++ b/bsd/kern/ubc_subr.c
+@@ -4778,6 +4778,23 @@ ubc_cs_blob_add(
+ 		platform);
+ 
+ 	if (error != 0) {
++#if defined(KEBAB)
++		/* KEBAB bring-up: kprintf is swallowed by boot progress, so put the
++		 * AMFI verdict on the panel: this is the shared-cache registration
++		 * failure dyld reports as "code signature registration ... failed". */
++		{
++			extern void kebab_early_mark(unsigned, const char *);
++			extern void kebab_early_hex(unsigned long long);
++			static unsigned marks;
++			if (marks < 4) {
++				marks++;
++				kebab_early_mark(294, "cs blob: MACF rejected");
++				kebab_early_hex((unsigned long long)(unsigned)error);
++				kebab_early_hex((unsigned long long)size);
++				kebab_early_hex((unsigned long long)base_offset);
++			}
++		}
++#endif
+ 		printf("validation of code signature failed through MACF policy: %d\n", error);
+ 		goto out;
+ 	}

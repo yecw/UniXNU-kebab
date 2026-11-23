@@ -1,0 +1,38 @@
+diff --git a/bsd/kern/kern_descrip.c b/bsd/kern/kern_descrip.c
+index 76b6958..2bbd8ff 100644
+--- a/bsd/kern/kern_descrip.c
++++ b/bsd/kern/kern_descrip.c
+@@ -5322,7 +5322,9 @@ outdrop:
+ 		/* The panel scrolls 60 rows, so a mark cannot survive to the panic;
+ 		 * with kebab_addfilesigs_panic=1 make the registration error the panic
+ 		 * itself. F_ADDFILESIGS_RETURN is what dyld uses for the shared cache. */
+-		if (cmd == F_ADDFILESIGS_RETURN && error != 0 && proc_getpid(p) == 1) {
++		if ((cmd == F_ADDSIGS || cmd == F_ADDFILESIGS ||
++		    cmd == F_ADDFILESIGS_FOR_DYLD_SIM || cmd == F_ADDFILESIGS_RETURN ||
++		    cmd == F_ADDFILESIGS_INFO) && error != 0 && proc_getpid(p) == 1) {
+ 			extern boolean_t PE_parse_boot_argn(const char *, void *, int);
+ 			char kebab_flag[8];
+ 			if (PE_parse_boot_argn("kebab_addfilesigs_panic", kebab_flag,
+diff --git a/bsd/kern/ubc_subr.c b/bsd/kern/ubc_subr.c
+index 3a7ad9e..26eb666 100644
+--- a/bsd/kern/ubc_subr.c
++++ b/bsd/kern/ubc_subr.c
+@@ -5633,6 +5633,18 @@ ubc_cs_blob_revalidate(
+ 	/* callout to mac_vnode_check_signature */
+ #if CONFIG_MACF
+ 	error = mac_vnode_check_signature(vp, blob, imgp, &cs_flags, &signer_type, flags, platform);
++#if defined(KEBAB)
++	if (error != 0) {
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		static unsigned marks;
++		if (marks < 4) {
++			marks++;
++			kebab_early_mark(294, "cs revalidate: MACF rejected");
++			kebab_early_hex((unsigned long long)(unsigned)error);
++		}
++	}
++#endif
+ 	if (cs_debug && error) {
+ 		printf("revalidate: check_signature[pid: %d], error = %d\n", proc_getpid(current_proc()), error);
+ 	}

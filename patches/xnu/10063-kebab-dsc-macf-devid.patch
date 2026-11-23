@@ -1,0 +1,54 @@
+diff --git a/bsd/kern/ubc_subr.c b/bsd/kern/ubc_subr.c
+index 93b6ec7..b736081 100644
+--- a/bsd/kern/ubc_subr.c
++++ b/bsd/kern/ubc_subr.c
+@@ -4677,17 +4677,40 @@ kebab_skip_macf_for_vnode(vnode_t vp)
+ 		return FALSE;
+ 	}
+ 	/*
+-	 * Restrict this to the dyld shared cache files themselves. A mount-based
+-	 * test is not precise enough: with the cryptex unioned over /, the root
+-	 * volume's own files (launchd included) also look like "a read-only apfs
+-	 * mount that is not rootvnode's", and skipping their signature check makes
+-	 * AMFI kill them at exec (namespace 9 code 0x8).
++	 * Restrict this to files on the SystemOS cryptex volume. Name and mount
++	 * tests are not precise enough: v_name is usually NULL for these vnodes,
++	 * and with the cryptex unioned over / the root volume's own files look
++	 * like "a read-only apfs mount"; skipping their signature check makes AMFI
++	 * kill them at exec (namespace 9 code 0x8). The volume device number is
++	 * unambiguous.
+ 	 */
+-	if (vp->v_name == NULL || strncmp(vp->v_name, "dyld_shared_cache", 17) != 0) {
+-		return FALSE;
++	{
++		extern int native_verified_block_volume_device(const char *, dev_t *, char *, size_t);
++		static dev_t cache_device = NODEV;
++		char device_path[64];
++		vnode_t device_vnode;
++		dev_t mounted;
++
++		if (cache_device == NODEV &&
++		    !native_verified_block_volume_device("8846FE78-2910-4297-AF97-D59BB6F8FC16",
++		    &cache_device, device_path, sizeof(device_path))) {
++			return FALSE;
++		}
++		m = vnode_mount(vp);
++		if (m == NULL) {
++			return FALSE;
++		}
++		device_vnode = vfs_devvp(m);
++		if (device_vnode == NULLVP) {
++			return FALSE;
++		}
++		mounted = vnode_specrdev(device_vnode);
++		vnode_put(device_vnode);
++		if (mounted != cache_device) {
++			return FALSE;
++		}
+ 	}
+-	m = vnode_mount(vp);
+-	if (m == NULL || !(vfs_flags(m) & MNT_RDONLY)) {
++	if (!(vfs_flags(m) & MNT_RDONLY)) {
+ 		return FALSE;
+ 	}
+ 	return strcmp(vfs_statfs(m)->f_fstypename, "apfs") == 0;

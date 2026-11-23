@@ -1,0 +1,27 @@
+diff --git a/bsd/vm/vm_unix.c b/bsd/vm/vm_unix.c
+index 3498343..8e54fdc 100644
+--- a/bsd/vm/vm_unix.c
++++ b/bsd/vm/vm_unix.c
+@@ -2245,7 +2245,11 @@ native_owner_shared_cache_carrier(vnode_t process_root, vnode_t file)
+ #else
+ 	const char *cache_uuid = "8846FE78-2910-4297-AF97-D59BB6F8FC16";
+ #endif
+-	const char *directory = "/private/preboot/System/Library/Caches/com.apple.dyld";
++	/* KEBAB: the cryptex is union-mounted over / (so the cache also appears at
++	 * /System/Library/Caches/com.apple.dyld); keep the preboot layout as a
++	 * fallback for a direct /private/preboot mount. */
++	const char *directory = "/System/Library/Caches/com.apple.dyld";
++	const char *directory_fallback = "/private/preboot/System/Library/Caches/com.apple.dyld";
+ 	vnode_t expected_parent = NULLVP, device_vnode;
+ 	dev_t root_device = NODEV, cache_device = NODEV, expected = NODEV;
+ 	char device_path[64];
+@@ -2271,7 +2275,8 @@ native_owner_shared_cache_carrier(vnode_t process_root, vnode_t file)
+ 	    expected != root_device ||
+ 	    !native_verified_block_volume_device(cache_uuid, &expected, device_path, sizeof(device_path)) ||
+ 	    expected != cache_device) goto out;
+-	if (vnode_lookup(directory, 0, &expected_parent, vfs_context_current())) goto out;
++	if (vnode_lookup(directory, 0, &expected_parent, vfs_context_current()) &&
++	    vnode_lookup(directory_fallback, 0, &expected_parent, vfs_context_current())) goto out;
+ 	authorized = vnode_vtype(expected_parent) == VDIR && vnode_mount(expected_parent) == cache_mount &&
+ 	    vnode_parent(file) == expected_parent && native_verified_block_root_authorized(root_device);
+ out:

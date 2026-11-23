@@ -1,0 +1,85 @@
+diff --git a/bsd/kern/ubc_subr.c b/bsd/kern/ubc_subr.c
+index 26eb666..e71e28c 100644
+--- a/bsd/kern/ubc_subr.c
++++ b/bsd/kern/ubc_subr.c
+@@ -4653,6 +4653,40 @@ reconstitute_code_signature(
+ 	return 0;
+ }
+ 
++#if defined(KEBAB)
++/*
++ * KEBAB bring-up: dyld registers the shared cache with
++ * fcntl(F_ADDFILESIGS_RETURN) and Apple's AMFI answers EBADEXEC for a cache on
++ * the offline-mounted SystemOS cryptex (it is not a sealed root volume). With
++ * kebab_skip_dsc_macf=1 the MACF verdict is skipped for files on a read-only
++ * APFS mount that is not the root, i.e. exactly the cryptex; the blob is still
++ * parsed structurally by the code below.
++ */
++static boolean_t
++kebab_skip_macf_for_vnode(vnode_t vp)
++{
++	extern boolean_t PE_parse_boot_argn(const char *, void *, int);
++	static int allow = -1;
++	mount_t m;
++
++	if (allow < 0) {
++		char value[8];
++		allow = PE_parse_boot_argn("kebab_skip_dsc_macf", value, sizeof(value)) ? 1 : 0;
++	}
++	if (!allow || vp == NULLVP) {
++		return FALSE;
++	}
++	m = vnode_mount(vp);
++	if (m == NULL || rootvnode == NULLVP || m == vnode_mount(rootvnode)) {
++		return FALSE;
++	}
++	if (!(vfs_flags(m) & MNT_RDONLY)) {
++		return FALSE;
++	}
++	return strcmp(vfs_statfs(m)->f_fstypename, "apfs") == 0;
++}
++#endif
++
+ int
+ ubc_cs_blob_add(
+ 	struct vnode    *vp,
+@@ -4768,14 +4802,19 @@ ubc_cs_blob_add(
+ 	unsigned int cs_flags = tmp_blob.csb_flags;
+ 	unsigned int signer_type = tmp_blob.csb_signer_type;
+ 
+-	error = mac_vnode_check_signature(
+-		vp,
+-		&tmp_blob,
+-		imgp,
+-		&cs_flags,
+-		&signer_type,
+-		flags,
+-		platform);
++#if defined(KEBAB)
++	if (!kebab_skip_macf_for_vnode(vp))
++#endif
++	{
++		error = mac_vnode_check_signature(
++			vp,
++			&tmp_blob,
++			imgp,
++			&cs_flags,
++			&signer_type,
++			flags,
++			platform);
++	}
+ 
+ 	if (error != 0) {
+ #if defined(KEBAB)
+@@ -5632,6 +5671,11 @@ ubc_cs_blob_revalidate(
+ 
+ 	/* callout to mac_vnode_check_signature */
+ #if CONFIG_MACF
++#if defined(KEBAB)
++	if (kebab_skip_macf_for_vnode(vp)) {
++		error = 0;
++	} else
++#endif
+ 	error = mac_vnode_check_signature(vp, blob, imgp, &cs_flags, &signer_type, flags, platform);
+ #if defined(KEBAB)
+ 	if (error != 0) {

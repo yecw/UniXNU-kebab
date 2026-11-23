@@ -1,0 +1,26 @@
+diff --git a/bsd/kern/ubc_subr.c b/bsd/kern/ubc_subr.c
+index e71e28c..93b6ec7 100644
+--- a/bsd/kern/ubc_subr.c
++++ b/bsd/kern/ubc_subr.c
+@@ -4676,11 +4676,18 @@ kebab_skip_macf_for_vnode(vnode_t vp)
+ 	if (!allow || vp == NULLVP) {
+ 		return FALSE;
+ 	}
+-	m = vnode_mount(vp);
+-	if (m == NULL || rootvnode == NULLVP || m == vnode_mount(rootvnode)) {
++	/*
++	 * Restrict this to the dyld shared cache files themselves. A mount-based
++	 * test is not precise enough: with the cryptex unioned over /, the root
++	 * volume's own files (launchd included) also look like "a read-only apfs
++	 * mount that is not rootvnode's", and skipping their signature check makes
++	 * AMFI kill them at exec (namespace 9 code 0x8).
++	 */
++	if (vp->v_name == NULL || strncmp(vp->v_name, "dyld_shared_cache", 17) != 0) {
+ 		return FALSE;
+ 	}
+-	if (!(vfs_flags(m) & MNT_RDONLY)) {
++	m = vnode_mount(vp);
++	if (m == NULL || !(vfs_flags(m) & MNT_RDONLY)) {
+ 		return FALSE;
+ 	}
+ 	return strcmp(vfs_statfs(m)->f_fstypename, "apfs") == 0;

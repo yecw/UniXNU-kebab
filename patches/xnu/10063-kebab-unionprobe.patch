@@ -1,0 +1,38 @@
+diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
+index b6f7b0c..cf702af 100644
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -7194,12 +7194,18 @@ native_owner_cache_prepare(proc_t p, user_addr_t scratch, user_addr_t *envp)
+ 		extern void kebab_early_hex(unsigned long long);
+ 		vnode_t kebab_dir = NULLVP, kebab_file = NULLVP;
+ 		long long kebab_size = -1;
++		/* The union mount puts the cryptex over /, so the path dyld uses by
++		 * default is now the interesting one. */
+ 		int kebab_dir_err = vnode_lookup(
+-		    "/private/preboot/System/Library/Caches/com.apple.dyld", 0, &kebab_dir,
++		    "/System/Library/Caches/com.apple.dyld", 0, &kebab_dir,
+ 		    vfs_context_current());
+ 		int kebab_file_err = vnode_lookup(
+-		    "/private/preboot/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64", 0,
++		    "/System/Library/Caches/com.apple.dyld/dyld_shared_cache_arm64", 0,
+ 		    &kebab_file, vfs_context_current());
++		int kebab_union = 0;
++		if (rootvnode != NULLVP) {
++			kebab_union = (vfs_flags(vnode_mount(rootvnode)) & MNT_UNION) != 0;
++		}
+ 		kebab_early_mark(293, "cache dir/file lookup");
+ 		kebab_early_hex((unsigned long long)(unsigned)kebab_dir_err);
+ 		kebab_early_hex((unsigned long long)(unsigned)kebab_file_err);
+@@ -7231,9 +7237,9 @@ native_owner_cache_prepare(proc_t p, user_addr_t scratch, user_addr_t *envp)
+ 				    &kebab_env_len) != 0) {
+ 					kebab_env_len = 0;
+ 				}
+-				panic("KEBAB probe env=%lu dir=%d file=%d size=%lld",
+-				    (unsigned long)kebab_env_len, kebab_dir_err, kebab_file_err,
+-				    kebab_size);
++				panic("KEBAB probe env=%lu union=%d dir=%d file=%d size=%lld",
++				    (unsigned long)kebab_env_len, kebab_union, kebab_dir_err,
++				    kebab_file_err, kebab_size);
+ 			}
+ 		}
+ 	}

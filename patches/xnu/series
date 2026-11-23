@@ -123,3 +123,13 @@ pending/adapt-0367-after-0366.patch
 10063-kebab-cachepath-probe.patch
 10063-kebab-cacheprobe-panic.patch
 10063-kebab-openpaths.patch
+10063-kebab-union-mounts.patch
+10063-kebab-unionprobe.patch
+10063-kebab-cssig-probe.patch
+10063-kebab-addfilesigs-probe.patch
+10063-kebab-dsc-gate.patch
+10063-kebab-carrier-path.patch
+10063-kebab-probe2.patch
+10063-kebab-dsc-macf-bypass.patch
+10063-kebab-dsc-macf-narrow.patch
+10063-kebab-dsc-macf-devid.patch

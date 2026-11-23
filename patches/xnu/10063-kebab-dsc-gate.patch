@@ -1,0 +1,60 @@
+diff --git a/bsd/vm/vm_unix.c b/bsd/vm/vm_unix.c
+index dcebcb8..3498343 100644
+--- a/bsd/vm/vm_unix.c
++++ b/bsd/vm/vm_unix.c
+@@ -2616,6 +2616,45 @@ after_root_check:
+ 		 * is either on the root volume or in the preboot cryptex volume.
+ 		 */
+ 		assert(rdir_vp != NULL);
++#if defined(KEBAB)
++		/*
++		 * KEBAB bring-up: the SystemOS cryptex is mounted by the offline owner
++		 * cache path, so the shared cache is neither on the process' root
++		 * volume nor under /private/preboot/Cryptexes, which is what this
++		 * gate checks. kebab_dsc_gate_panic=1 reports the state;
++		 * kebab_allow_dsc_any_mount=1 skips the volume check (the cache is
++		 * still structurally verified by dyld and read-only in the cryptex).
++		 */
++		{
++			extern boolean_t PE_parse_boot_argn(const char *, void *, int);
++			static int kebab_allow = -1, kebab_panic = -1;
++			char kebab_value[8];
++			if (kebab_allow < 0) {
++				kebab_allow = PE_parse_boot_argn("kebab_allow_dsc_any_mount",
++				    kebab_value, sizeof(kebab_value)) ? 1 : 0;
++			}
++			if (kebab_panic < 0) {
++				kebab_panic = PE_parse_boot_argn("kebab_dsc_gate_panic",
++				    kebab_value, sizeof(kebab_value)) ? 1 : 0;
++			}
++			if (kebab_panic || kebab_allow) {
++				vnode_t kebab_preboot = NULLVP;
++				int kebab_same = (srfmp->vp->v_mount == rdir_vp->v_mount);
++				int kebab_lookup = vnode_lookup("/private/preboot/Cryptexes", 0,
++				    &kebab_preboot, vfs_context_current());
++				if (kebab_preboot != NULLVP) {
++					vnode_put(kebab_preboot);
++				}
++				if (kebab_panic) {
++					panic("KEBAB dsc gate same=%d lookup=%d allow=%d",
++					    kebab_same, kebab_lookup, kebab_allow);
++				}
++				if (kebab_allow) {
++					goto kebab_dsc_allowed;
++				}
++			}
++		}
++#endif
+ #if defined(XNU_OWNER_CACHE_CARRIER) && XNU_OWNER_CACHE_CARRIER
+ 		boolean_t owner_carrier = FALSE;
+ #endif
+@@ -2651,6 +2690,9 @@ after_root_check:
+ 				(void)vnode_put(preboot_vp);
+ 			}
+ 		}
++#if defined(KEBAB)
++kebab_dsc_allowed: ;
++#endif
+ #endif /* CONFIG_CSR */
+ 
+ 		if (scdir_enforce

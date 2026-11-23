@@ -1,0 +1,57 @@
+diff --git a/bsd/kern/kern_descrip.c b/bsd/kern/kern_descrip.c
+index c966085..76b6958 100644
+--- a/bsd/kern/kern_descrip.c
++++ b/bsd/kern/kern_descrip.c
+@@ -3898,6 +3898,20 @@ sys_fcntl_nocancel(proc_t p, struct fcntl_nocancel_args *uap, int32_t *retval)
+ 	case F_ADDFILESIGS_RETURN:
+ 	case F_ADDFILESIGS_INFO:
+ 	{
++#if defined(KEBAB)
++		/* KEBAB bring-up: dyld's "code signature registration for shared
++		 * cache" is exactly this fcntl. */
++		{
++			extern void kebab_early_mark(unsigned, const char *);
++			extern void kebab_early_hex(unsigned long long);
++			static unsigned marks;
++			if (marks < 6) {
++				marks++;
++				kebab_early_mark(295, "fcntl addsigs: enter");
++				kebab_early_hex((unsigned long long)(unsigned)cmd);
++			}
++		}
++#endif
+ 		struct cs_blob *blob = NULL;
+ 		struct user_fsignatures fs;
+ 		kern_return_t kr;
+@@ -5293,6 +5307,31 @@ dropboth:
+ 	}
+ 
+ outdrop:
++#if defined(KEBAB)
++	if (cmd == F_ADDSIGS || cmd == F_ADDFILESIGS || cmd == F_ADDFILESIGS_FOR_DYLD_SIM ||
++	    cmd == F_ADDFILESIGS_RETURN || cmd == F_ADDFILESIGS_INFO) {
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		static unsigned marks;
++		if (marks < 6) {
++			marks++;
++			kebab_early_mark(296, "fcntl addsigs: result");
++			kebab_early_hex((unsigned long long)(unsigned)cmd);
++			kebab_early_hex((unsigned long long)(unsigned)error);
++		}
++		/* The panel scrolls 60 rows, so a mark cannot survive to the panic;
++		 * with kebab_addfilesigs_panic=1 make the registration error the panic
++		 * itself. F_ADDFILESIGS_RETURN is what dyld uses for the shared cache. */
++		if (cmd == F_ADDFILESIGS_RETURN && error != 0 && proc_getpid(p) == 1) {
++			extern boolean_t PE_parse_boot_argn(const char *, void *, int);
++			char kebab_flag[8];
++			if (PE_parse_boot_argn("kebab_addfilesigs_panic", kebab_flag,
++			    sizeof(kebab_flag))) {
++				panic("KEBAB addfilesigs cmd=%d errno=%d", cmd, error);
++			}
++		}
++	}
++#endif
+ 	return sys_fcntl_outdrop(p, fd, fp, vp, error);
+ 
+ out:

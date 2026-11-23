@@ -1,0 +1,13 @@
+diff --git a/config/MASTER.arm64.bcm2837 b/config/MASTER.arm64.bcm2837
+index a185cf4..1cf212c 100644
+--- a/config/MASTER.arm64.bcm2837
++++ b/config/MASTER.arm64.bcm2837
+@@ -95,3 +95,8 @@ options   CONFIG_KERNEL_INTEGRITY		# <kernel_integrity>
+ options   CONFIG_UBSAN_MINIMAL		# <ubsan_minimal>
+ options   CONFIG_KERNEL_TBI	# <kernel_tbi>
+ options   CONFIG_KERNEL_TAGGING		# <kernel_tagging>
++
++# KEBAB: the SystemOS cryptex carries System/ and usr/ at its root, so the only
++# way to make /System/Library/Caches/com.apple.dyld resolve is a union mount
++# over the root; that needs the core VFS union lookup compiled in.
++options   CONFIG_UNION_MOUNTS		# <config_union_mounts>
