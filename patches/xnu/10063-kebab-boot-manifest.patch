@@ -1,0 +1,58 @@
+diff --git a/bsd/dev/kebab_ufs.c b/bsd/dev/kebab_ufs.c
+index 51d1e60..79c0b92 100644
+--- a/bsd/dev/kebab_ufs.c
++++ b/bsd/dev/kebab_ufs.c
+@@ -43,6 +43,7 @@
+ #include <pexpert/pexpert.h>
+ #include <pexpert/device_tree.h>
+ #include <libkern/libkern.h>
++#include <libkern/crypto/sha2.h>
+ 
+ extern ppnum_t pmap_find_phys(pmap_t pmap, addr64_t va);
+ /* osfmk/arm/machine_routines.h, not exported to the BSD layer */
+@@ -1277,6 +1278,45 @@ kebab_ufs_systemos_read(void *buffer, uint64_t offset, size_t length)
+ 	return error;
+ }
+ 
++/*
++ * KEBAB: deterministic per-volume digest for the offline owner boot manifest
++ * (offline-owner-boot-manifest.patch publishes the combined hash to
++ * /chosen/boot-manifest-hash). Apple's signed per-volume manifests are not
++ * available offline, so bind each window's SHNGROOT header plus a role tag:
++ * that distinguishes the OS root from the SystemOS cryptex and is stable
++ * across boots. Development only.
++ */
++int
++native_verified_block_manifest_sha384(dev_t device, const char *uuid, uint8_t digest[48])
++{
++	static const char root_uuid[] = "04769D26-2CA0-4825-B443-E2E5F88300F2";
++	uint8_t header[4096];
++	SHA384_CTX context;
++	char tag[48];
++	int tag_length;
++	int error;
++
++	(void)device;
++	if (uuid == NULL || digest == NULL || !su.ready) {
++		return 0;
++	}
++	if (strcasecmp(uuid, root_uuid) == 0) {
++		error = kebab_ufs_raw_io(header, 0, sizeof(header), false);
++		tag_length = snprintf(tag, sizeof(tag), "KEBAB.BootManifest.root");
++	} else {
++		error = kebab_ufs_systemos_read(header, 0, sizeof(header));
++		tag_length = snprintf(tag, sizeof(tag), "KEBAB.BootManifest.cache");
++	}
++	if (error != 0 || tag_length <= 0) {
++		return 0;
++	}
++	SHA384_Init(&context);
++	SHA384_Update(&context, tag, (size_t)tag_length);
++	SHA384_Update(&context, header, sizeof(header));
++	SHA384_Final(digest, &context);
++	return 1;
++}
++
+ int
+ kebab_ufs_raw_read(void *buffer, uint64_t offset, size_t length)
+ {
