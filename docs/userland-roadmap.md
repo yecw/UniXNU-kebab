@@ -106,3 +106,33 @@ mmap 的 VA 不是问题，**resident** 才是。观察点：
 - `prepare-xnu-source.py` 在重新克隆 `xnu-work` 后要联网补 DriverKit 头；网络只有 gh-proxy 前缀可用；
 - 编译 dSYM 需要放开文件沙箱（`/dev/fd`）；
 - 只刷 `boot_b`，刷机前逐次确认；每次一个变量。
+
+## 2026-11-24 进展（官方 owner 链完成）
+
+### 已完成
+
+- **P1 根的官方验证**：`kits/VerifiedRoot` 编入 `libKebabStorage.a`；`KebabBlockStorageDevice` 实现
+  `configureVerification/authenticatesVolume/verifiedTransfer/native_ufs_block_authenticates`；
+  `native_verified_block_root_authorized()` 由 `return 1` 改为按 IOMedia→provider 链的签名查询。
+  真机：`297 vroot: window verified`（OS 1483776 块、SystemOS 806400 块）、`299 authorized=0x1`。
+- **P1 哈希表交付**：SHNGROOT v2 data object（flags=3）+ `kebab_ufs_object_read`；userdata 新增
+  `OS.vroot`(47.5 MB)/`SystemOS.vroot`(25.8 MB)；`vr_open` 满表校验在真机通过。
+- **P1 boot manifest**：驱动用已验证信封回答 `native_verified_block_manifest_sha384()`；
+  `CONFIG_XNU_OWNER_BOOT_MANIFEST=y` 发布 `/chosen/boot-manifest-hash`。
+- **可观测性**：探针默认静音（保留 243/258/260/262/270/271/295/296/297/299），`kebab_probe_verbose=1` 恢复。
+
+### 卡点与真因
+
+- dyld 的 `fcntl(F_ADDFILESIGS_RETURN)` 仍得 `errno=85 (EBADEXEC)`，与 owner 链无关。
+- 根因：加载的信任缓存 `darwinboot.trustcache`(c9e50d67) **只有 2478 条静态**，DSC 的 CDHash
+  `fcdb9268…` 在 cryptex 的 76 条里（`kebab-static-system.bundle` 7416ca4f 的 module 1）。
+- 2 模块 bundle 直接刷会卡在彩屏（本系列无 `CONFIG_SECOND_STATIC_TRUST_CACHE`）；
+  已改为**单模块合并**（2554 条，`kebab-merged-static.trustcache` 63a4f0b5），镜像
+  `unixnu-kebab-mergedtc.img`（e2c0f61e）待真机验证。
+
+### 明天
+
+1. 刷回 `unixnu-kebab-vrootb1.img`（99db4590）恢复；
+2. 刷 `unixnu-kebab-mergedtc.img`，看 `296 fcntl addsigs` 的 errno 是否 0x0；
+3. 若仍 0x55 → `CONFIG_SECOND_STATIC_TRUST_CACHE` 或替换 AMFI provider（raphael 0036 / GFander 0088）；
+4. 若 0x0 → 观察 dyld 映射、`launchd logging initialized`、2.9 GB 内存压力。
