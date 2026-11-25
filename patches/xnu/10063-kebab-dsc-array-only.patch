@@ -1,0 +1,72 @@
+diff --git a/bsd/kern/kebab_dyldcache.c b/bsd/kern/kebab_dyldcache.c
+index 568cec9..abd0491 100644
+--- a/bsd/kern/kebab_dyldcache.c
++++ b/bsd/kern/kebab_dyldcache.c
+@@ -900,43 +900,31 @@ kebab_dsc_build_plan(const char *dir, struct kebab_dsc_plan *plan)
+ 		error = ENOMEM;
+ 		goto out;
+ 	}
+-	error = kebab_dsc_list_dir(dir, candidates, KEBAB_DSC_MAX_CANDIDATES,
+-	    &candidate_count);
+-	if (error != 0) {
+-		printf("KEBAB DSC: reading directory %s failed (error %d)\n", dir, error);
+-		KEBAB_DSC_MARK(312, "dsc: list dir failed");
+-		KEBAB_DSC_HEX((unsigned long long)(unsigned)error);
+-		candidate_count = 0;
+-		error = 0;
+-	}
+-	if (candidate_count == 0) {
+-		/*
+-		 * VNOP_READDIR on the cryptex union directory returns nothing, but the
+-		 * main header names every subcache by suffix (including .dylddata and
+-		 * .dyldlinkedit), so build the names from the subCacheArray instead.
+-		 */
+-		uint32_t synthesized = 0;
+-
+-		for (i = 0; i < plan->subcache_count && synthesized < KEBAB_DSC_MAX_CANDIDATES;
+-		    i++) {
+-			if (entries[i].suffix[0] == '\0') {
+-				continue;
+-			}
+-			snprintf(candidates[synthesized].name,
+-			    sizeof(candidates[synthesized].name), "%s%s",
+-			    KEBAB_DSC_PREFIX, entries[i].suffix);
+-			memcpy(candidates[synthesized].uuid, entries[i].uuid, 16);
+-			synthesized++;
+-		}
+-		candidate_count = synthesized;
+-		KEBAB_DSC_MARK(312, "dsc: candidates from array");
+-		KEBAB_DSC_HEX(candidate_count);
+-		if (candidate_count == 0) {
+-			printf("KEBAB DSC: directory %s has no %s* files\n", dir,
+-			    KEBAB_DSC_PREFIX);
+-			error = ENOENT;
+-			goto out;
++	/*
++	 * VNOP_READDIR on the cryptex union directory is unreliable here (it
++	 * returns nothing, or only part of the directory), while the main header
++	 * names every subcache by suffix, including .dylddata and .dyldlinkedit.
++	 * Build the candidate list from the subCacheArray alone.
++	 */
++	candidate_count = 0;
++	for (i = 0; i < plan->subcache_count && candidate_count < KEBAB_DSC_MAX_CANDIDATES;
++	    i++) {
++		if (entries[i].suffix[0] == '\0') {
++			continue;
+ 		}
++		snprintf(candidates[candidate_count].name,
++		    sizeof(candidates[candidate_count].name), "%s%s",
++		    KEBAB_DSC_PREFIX, entries[i].suffix);
++		memcpy(candidates[candidate_count].uuid, entries[i].uuid, 16);
++		candidate_count++;
++	}
++	KEBAB_DSC_MARK(312, "dsc: candidates from array");
++	KEBAB_DSC_HEX(candidate_count);
++	if (candidate_count == 0) {
++		printf("KEBAB DSC: directory %s has no %s* files\n", dir,
++		    KEBAB_DSC_PREFIX);
++		error = ENOENT;
++		goto out;
+ 	}
+ 
+ 	{

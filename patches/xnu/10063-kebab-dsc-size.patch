@@ -1,0 +1,26 @@
+diff --git a/bsd/kern/kebab_dyldcache.c b/bsd/kern/kebab_dyldcache.c
+index 2a5628d..eb69842 100644
+--- a/bsd/kern/kebab_dyldcache.c
++++ b/bsd/kern/kebab_dyldcache.c
+@@ -344,7 +344,20 @@ kebab_dsc_open_file(const char *dir, const char *name, vnode_t *vpp, off_t *size
+ 		vnode_put(vp);
+ 		return EINVAL;
+ 	}
+-	size = ubc_getsize(vp);
++	/*
++	 * ubc_getsize() returns 0 for a vnode whose attributes were never fetched
++	 * (the .dyldlinkedit subcache hit exactly that), so ask the filesystem.
++	 */
++	{
++		struct vnode_attr va;
++		VATTR_INIT(&va);
++		VATTR_WANTED(&va, va_data_size);
++		if (vnode_getattr(vp, &va, vfs_context_current()) == 0) {
++			size = (off_t)va.va_data_size;
++		} else {
++			size = ubc_getsize(vp);
++		}
++	}
+ 	if (size < (off_t)KEBAB_DSC_HEADER_SIZE) {
+ 		KEBAB_DSC_MARK(317, "dsc: open too small");
+ 		KEBAB_DSC_HEX((unsigned long long)size);

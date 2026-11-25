@@ -1,0 +1,24 @@
+diff --git a/bsd/kern/kebab_dyldcache.c b/bsd/kern/kebab_dyldcache.c
+index 2f057df..6e1da20 100644
+--- a/bsd/kern/kebab_dyldcache.c
++++ b/bsd/kern/kebab_dyldcache.c
+@@ -984,11 +984,14 @@ kebab_dsc_build_plan(const char *dir, struct kebab_dsc_plan *plan)
+ 		memcpy(suffix, entry->suffix, sizeof(entry->suffix));
+ 		suffix[32] = '\0';
+ 
+-		for (j = 0; j < candidate_count; j++) {
+-			if (memcmp(candidates[j].uuid, entry->uuid, 16) == 0) {
+-				found = (int)j;
+-				break;
+-			}
++		/*
++		 * The candidate list was built from this same array, entry for entry,
++		 * so entry i names candidate i. Searching by UUID only added failure
++		 * modes (subcache 33 reported "uuid missing" against its own name).
++		 */
++		if (i < candidate_count &&
++		    memcmp(candidates[i].uuid, entry->uuid, 16) == 0) {
++			found = (int)i;
+ 		}
+ 		if (found < 0) {
+ 			KEBAB_DSC_MARK(315, "dsc: subcache uuid missing");

@@ -1,0 +1,20 @@
+diff --git a/bsd/kern/kebab_dyldcache.c b/bsd/kern/kebab_dyldcache.c
+index cf61c4c..2a5628d 100644
+--- a/bsd/kern/kebab_dyldcache.c
++++ b/bsd/kern/kebab_dyldcache.c
+@@ -339,11 +339,15 @@ kebab_dsc_open_file(const char *dir, const char *name, vnode_t *vpp, off_t *size
+ 		return error;
+ 	}
+ 	if (vp->v_type != VREG) {
++		KEBAB_DSC_MARK(316, "dsc: open not vreg");
++		KEBAB_DSC_HEX((unsigned long long)vp->v_type);
+ 		vnode_put(vp);
+ 		return EINVAL;
+ 	}
+ 	size = ubc_getsize(vp);
+ 	if (size < (off_t)KEBAB_DSC_HEADER_SIZE) {
++		KEBAB_DSC_MARK(317, "dsc: open too small");
++		KEBAB_DSC_HEX((unsigned long long)size);
+ 		vnode_put(vp);
+ 		return EINVAL;
+ 	}

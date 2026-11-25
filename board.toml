@@ -187,6 +187,8 @@ kernel_args = [
   "kebab_verify_root=1",
   # Split dyld shared cache: parse and log the mapping plan (dry run).
   "kebab_dsc=1",
+  # Map the split shared cache into the shared region at pid 1 exec.
+  "kebab_dsc_map=1",
   # Bring-up instrument: panic before exec with the cache-path probe result, so
   # the numbers are visible on the panic screen (marks are painted over).
 ]

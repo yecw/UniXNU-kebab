@@ -1,0 +1,42 @@
+diff --git a/bsd/kern/kebab_dyldcache.c b/bsd/kern/kebab_dyldcache.c
+index b34d25c..5c629e8 100644
+--- a/bsd/kern/kebab_dyldcache.c
++++ b/bsd/kern/kebab_dyldcache.c
+@@ -907,10 +907,33 @@ kebab_dsc_build_plan(const char *dir, struct kebab_dsc_plan *plan)
+ 		goto out;
+ 	}
+ 	if (candidate_count == 0) {
+-		printf("KEBAB DSC: directory %s has no %s* files\n", dir,
+-		    KEBAB_DSC_PREFIX);
+-		error = ENOENT;
+-		goto out;
++		/*
++		 * VNOP_READDIR on the cryptex union directory returns nothing, but the
++		 * main header names every subcache by suffix (including .dylddata and
++		 * .dyldlinkedit), so build the names from the subCacheArray instead.
++		 */
++		uint32_t synthesized = 0;
++
++		for (i = 0; i < plan->subcache_count && synthesized < KEBAB_DSC_MAX_CANDIDATES;
++		    i++) {
++			if (entries[i].suffix[0] == '\0') {
++				continue;
++			}
++			snprintf(candidates[synthesized].name,
++			    sizeof(candidates[synthesized].name), "%s%s",
++			    KEBAB_DSC_PREFIX, entries[i].suffix);
++			memcpy(candidates[synthesized].uuid, entries[i].uuid, 16);
++			synthesized++;
++		}
++		candidate_count = synthesized;
++		KEBAB_DSC_MARK(312, "dsc: candidates from array");
++		KEBAB_DSC_HEX(candidate_count);
++		if (candidate_count == 0) {
++			printf("KEBAB DSC: directory %s has no %s* files\n", dir,
++			    KEBAB_DSC_PREFIX);
++			error = ENOENT;
++			goto out;
++		}
+ 	}
+ 
+ 	{

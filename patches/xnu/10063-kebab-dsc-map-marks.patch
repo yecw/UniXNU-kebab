@@ -1,0 +1,17 @@
+diff --git a/bsd/kern/kebab_dyldcache.c b/bsd/kern/kebab_dyldcache.c
+index eb69842..4d4c4ee 100644
+--- a/bsd/kern/kebab_dyldcache.c
++++ b/bsd/kern/kebab_dyldcache.c
+@@ -1363,7 +1363,12 @@ kebab_dsc_exec_hook(struct proc *p)
+ 	}
+ 	kebab_dsc_map_attempted = TRUE;
+ 	printf("KEBAB DSC: first exec (pid 1): attempting the deferred mapping\n");
++	KEBAB_DSC_MARK(318, "dsc: map start");
++	KEBAB_DSC_HEX(kebab_dsc_plan->total_mappings);
++	KEBAB_DSC_HEX(kebab_dsc_plan->total_mapped);
+ 	error = kebab_dsc_map_plan(kebab_dsc_plan);
++	KEBAB_DSC_MARK(319, "dsc: map result");
++	KEBAB_DSC_HEX((unsigned long long)(unsigned)error);
+ 	if (error != 0) {
+ 		printf("KEBAB DSC: mapping failed (error %d); shared cache NOT mapped\n",
+ 		    error);

@@ -1,0 +1,16 @@
+diff --git a/bsd/kern/kebab_dyldcache.c b/bsd/kern/kebab_dyldcache.c
+index 5c629e8..568cec9 100644
+--- a/bsd/kern/kebab_dyldcache.c
++++ b/bsd/kern/kebab_dyldcache.c
+@@ -904,7 +904,10 @@ kebab_dsc_build_plan(const char *dir, struct kebab_dsc_plan *plan)
+ 	    &candidate_count);
+ 	if (error != 0) {
+ 		printf("KEBAB DSC: reading directory %s failed (error %d)\n", dir, error);
+-		goto out;
++		KEBAB_DSC_MARK(312, "dsc: list dir failed");
++		KEBAB_DSC_HEX((unsigned long long)(unsigned)error);
++		candidate_count = 0;
++		error = 0;
+ 	}
+ 	if (candidate_count == 0) {
+ 		/*

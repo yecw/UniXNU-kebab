@@ -1,0 +1,21 @@
+diff --git a/bsd/kern/kebab_dyldcache.c b/bsd/kern/kebab_dyldcache.c
+index 2faf170..b34d25c 100644
+--- a/bsd/kern/kebab_dyldcache.c
++++ b/bsd/kern/kebab_dyldcache.c
+@@ -816,12 +816,16 @@ kebab_dsc_build_plan(const char *dir, struct kebab_dsc_plan *plan)
+ 	strlcpy(plan->dir, dir, sizeof(plan->dir));
+ 
+ 	error = kebab_dsc_open_file(dir, KEBAB_DSC_MAIN, &main_vp, &main_size);
++	KEBAB_DSC_MARK(310, "dsc: open main");
++	KEBAB_DSC_HEX((unsigned long long)(unsigned)error);
+ 	if (error != 0) {
+ 		printf("KEBAB DSC: main cache %s/%s: cannot open (error %d)\n",
+ 		    dir, KEBAB_DSC_MAIN, error);
+ 		return error;
+ 	}
+ 	error = kebab_dsc_read_header(main_vp, &main_header);
++	KEBAB_DSC_MARK(311, "dsc: header read");
++	KEBAB_DSC_HEX((unsigned long long)(unsigned)error);
+ 	if (error != 0) {
+ 		printf("KEBAB DSC: %s: reading header failed (error %d)\n",
+ 		    KEBAB_DSC_MAIN, error);

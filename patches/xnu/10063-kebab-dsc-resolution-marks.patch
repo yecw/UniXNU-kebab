@@ -1,0 +1,24 @@
+diff --git a/bsd/kern/kebab_dyldcache.c b/bsd/kern/kebab_dyldcache.c
+index abd0491..2f057df 100644
+--- a/bsd/kern/kebab_dyldcache.c
++++ b/bsd/kern/kebab_dyldcache.c
+@@ -991,6 +991,9 @@ kebab_dsc_build_plan(const char *dir, struct kebab_dsc_plan *plan)
+ 			}
+ 		}
+ 		if (found < 0) {
++			KEBAB_DSC_MARK(315, "dsc: subcache uuid missing");
++			KEBAB_DSC_HEX(i);
++			KEBAB_DSC_HEX((unsigned long long)(unsigned long)entry->suffix[0]);
+ 			kebab_dsc_uuid_string(entry->uuid, uuid);
+ 			printf("KEBAB DSC: subcache %02u suffix \"%s\" uuid %s: "
+ 			    "NO FILE WITH THIS UUID\n", i + 1, suffix, uuid);
+@@ -1000,6 +1003,9 @@ kebab_dsc_build_plan(const char *dir, struct kebab_dsc_plan *plan)
+ 
+ 		error = kebab_dsc_open_file(dir, candidates[found].name, &vp, &size);
+ 		if (error != 0) {
++			KEBAB_DSC_MARK(314, "dsc: subcache open failed");
++			KEBAB_DSC_HEX(i);
++			KEBAB_DSC_HEX((unsigned long long)(unsigned)error);
+ 			printf("KEBAB DSC: %s: cannot open (error %d)\n",
+ 			    candidates[found].name, error);
+ 			goto out;

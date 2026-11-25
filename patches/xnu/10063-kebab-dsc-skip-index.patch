@@ -1,0 +1,19 @@
+diff --git a/bsd/kern/kebab_dyldcache.c b/bsd/kern/kebab_dyldcache.c
+index 6e1da20..cf61c4c 100644
+--- a/bsd/kern/kebab_dyldcache.c
++++ b/bsd/kern/kebab_dyldcache.c
+@@ -927,7 +927,13 @@ kebab_dsc_build_plan(const char *dir, struct kebab_dsc_plan *plan)
+ 		goto out;
+ 	}
+ 
+-	{
++	/*
++	 * The candidates were built from the subCacheArray, so their UUIDs are
++	 * already correct. The old indexing pass rewrote the array in place and
++	 * shifted entries whenever a file could not be opened, which made later
++	 * subcaches report "uuid missing" against their own names.
++	 */
++	if (0) {
+ 		uint32_t indexed = 0;
+ 
+ 		for (i = 0; i < candidate_count; i++) {
