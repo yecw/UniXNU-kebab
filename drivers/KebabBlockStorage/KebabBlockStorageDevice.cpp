@@ -162,7 +162,7 @@ KebabBlockStorageDevice::transfer(IOMemoryDescriptor *buffer, UInt64 offset, UIn
 		return EINVAL;
 	}
 #if defined(NATIVE_VERIFIED_BLOCK) && NATIVE_VERIFIED_BLOCK
-	if (fVerified && loadTable()) {
+	if (fVerified && !fHeaderOnly) {
 		return verifiedTransfer(buffer, offset, length);
 	}
 #endif
@@ -478,14 +478,7 @@ KebabBlockStorageDevice::configureVerification(void)
 		uint64_t objectBytes = kebab_ufs_object_bytes(fSystemOs ? 1 : 0);
 		tableBytes = blockCount * 32;
 		if (objectBytes == tableBytes && tableBytes != 0) {
-			/*
-			 * Keep the signed header only for now: APFS probes this device while
-			 * it adopts the container, and spending the 25-47 MB table read in
-			 * start() delays the media enough for the offline owner mount to miss
-			 * the volume. The table is loaded on the first block read instead.
-			 */
 			envelopeBytes = manifestBytes + tableBytes;
-			fTablePending = true;
 		}
 	}
 	vm_size_t total = round_page((vm_size_t)envelopeBytes) + PAGE_SIZE;
@@ -497,10 +490,21 @@ KebabBlockStorageDevice::configureVerification(void)
 	fStoreBytes = total;
 	memcpy((void *)fStore, manifest, (size_t)manifestBytes);
 	fTableBytes = tableBytes;
+	if (envelopeBytes > manifestBytes) {
+		if (kebab_ufs_object_read(fSystemOs ? 1 : 0, (void *)(fStore + manifestBytes),
+		    0, (size_t)tableBytes) != 0) {
+			kebab_early_mark(297, "vroot: table read failed");
+			return false;
+		}
+		headerOnly = false;
+	}
 	memcpy((void *)(fStore + round_page((vm_size_t)envelopeBytes)), verified_root_key, VR_KEY_BYTES);
 	(void)vm_map_protect(kernel_map, fStore, fStore + total, VM_PROT_READ, TRUE);
-	opened = vr_open_header((const uint8_t *)fStore, (size_t)manifestBytes, verified_root_key, 1,
-	    &vr_xnu_crypto, &fView);
+	opened = headerOnly ?
+	    vr_open_header((const uint8_t *)fStore, (size_t)envelopeBytes, verified_root_key, 1,
+	        &vr_xnu_crypto, &fView) :
+	    vr_open((const uint8_t *)fStore, (size_t)envelopeBytes, verified_root_key, 1,
+	        &vr_xnu_crypto, &fView);
 	if (opened != VR_OK) {
 		kebab_early_mark(297, "vroot: open failed");
 		kebab_early_hex((unsigned long long)(unsigned)opened);
@@ -512,7 +516,7 @@ KebabBlockStorageDevice::configureVerification(void)
 			return false;
 		}
 	}
-	fHeaderOnly = headerOnly || fTablePending;
+	fHeaderOnly = headerOnly;
 	fEnvelopeBytes = envelopeBytes;
 	fVerified = true;
 	return true;
@@ -889,6 +893,42 @@ native_verified_block_volume_device(const char *uuid, dev_t *device, char *path,
 			}
 			kebab_early_mark(263, "volume lookup: uuid missing");
 			kebab_early_hex((unsigned long long)attempt);
+			/* What does the registry actually hold? Product plus UUID. */
+			{
+				OSDictionary *listing = IOService::serviceMatching("IOMedia");
+				if (listing != NULL) {
+					OSIterator *all = IOService::getMatchingServices(listing);
+					unsigned shown = 0;
+					if (all != NULL) {
+						IORegistryEntry *media;
+						while ((media = OSDynamicCast(IORegistryEntry,
+						    all->getNextObject())) != NULL && shown < 6) {
+							OSString *product = OSDynamicCast(OSString,
+							    media->getProperty(kIOBSDNameKey));
+							OSString *identity = OSDynamicCast(OSString,
+							    media->getProperty("UUID"));
+							kebab_early_mark(264, "volume lookup: media");
+							kebab_early_hex((unsigned long long)++shown);
+							if (product != NULL) {
+								const char *text = product->getCStringNoCopy();
+								while (text != NULL && *text != '\0') {
+									kebab_early_putc(*text++);
+								}
+							}
+							kebab_early_putc(' ');
+							if (identity != NULL) {
+								const char *text = identity->getCStringNoCopy();
+								while (text != NULL && *text != '\0') {
+									kebab_early_putc(*text++);
+								}
+							}
+							kebab_early_putc('\n');
+						}
+						all->release();
+					}
+					listing->release();
+				}
+			}
 			return 0;
 		}
 		if (attempt == 49) {
