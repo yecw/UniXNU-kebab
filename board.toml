@@ -185,7 +185,6 @@ kernel_args = [
   # Owner-verified root: the OS window must match the owner-signed manifest
   # (10063-kebab-boot-manifest material + KebabBlockStorage verification).
   "kebab_verify_root=1",
-  "kebab_skip_dsc_macf=1",
   # Bring-up instrument: panic before exec with the cache-path probe result, so
   # the numbers are visible on the panic screen (marks are painted over).
 ]

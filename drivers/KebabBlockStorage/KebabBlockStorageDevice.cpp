@@ -96,6 +96,7 @@ private:
 public:
 	bool authenticatesVolume(const char *uuid, uint8_t *digest) const;
 	bool manifestDigest(const char *uuid, uint8_t *digest) const;
+	bool loadTable(void);
 	bool signedUuid(char expected[37]) const;
 private:
 	bool configureVerification(void);
@@ -103,6 +104,8 @@ private:
 	bool        fVerified = false;
 	bool        fHeaderOnly = false;
 	uint64_t    fEnvelopeBytes = 0;
+	uint64_t    fTableBytes = 0;
+	bool        fTablePending = false;
 	struct vr_view fView = {};
 	vm_offset_t fStore = 0;
 	vm_size_t   fStoreBytes = 0;
@@ -159,7 +162,7 @@ KebabBlockStorageDevice::transfer(IOMemoryDescriptor *buffer, UInt64 offset, UIn
 		return EINVAL;
 	}
 #if defined(NATIVE_VERIFIED_BLOCK) && NATIVE_VERIFIED_BLOCK
-	if (fVerified && !fHeaderOnly) {
+	if (fVerified && loadTable()) {
 		return verifiedTransfer(buffer, offset, length);
 	}
 #endif
@@ -475,7 +478,14 @@ KebabBlockStorageDevice::configureVerification(void)
 		uint64_t objectBytes = kebab_ufs_object_bytes(fSystemOs ? 1 : 0);
 		tableBytes = blockCount * 32;
 		if (objectBytes == tableBytes && tableBytes != 0) {
+			/*
+			 * Keep the signed header only for now: APFS probes this device while
+			 * it adopts the container, and spending the 25-47 MB table read in
+			 * start() delays the media enough for the offline owner mount to miss
+			 * the volume. The table is loaded on the first block read instead.
+			 */
 			envelopeBytes = manifestBytes + tableBytes;
+			fTablePending = true;
 		}
 	}
 	vm_size_t total = round_page((vm_size_t)envelopeBytes) + PAGE_SIZE;
@@ -486,21 +496,11 @@ KebabBlockStorageDevice::configureVerification(void)
 	}
 	fStoreBytes = total;
 	memcpy((void *)fStore, manifest, (size_t)manifestBytes);
-	if (envelopeBytes > manifestBytes) {
-		if (kebab_ufs_object_read(fSystemOs ? 1 : 0, (void *)(fStore + manifestBytes),
-		    0, (size_t)tableBytes) != 0) {
-			kebab_early_mark(297, "vroot: table read failed");
-			return false;
-		}
-		headerOnly = false;
-	}
+	fTableBytes = tableBytes;
 	memcpy((void *)(fStore + round_page((vm_size_t)envelopeBytes)), verified_root_key, VR_KEY_BYTES);
 	(void)vm_map_protect(kernel_map, fStore, fStore + total, VM_PROT_READ, TRUE);
-	opened = headerOnly ?
-	    vr_open_header((const uint8_t *)fStore, (size_t)envelopeBytes, verified_root_key, 1,
-	        &vr_xnu_crypto, &fView) :
-	    vr_open((const uint8_t *)fStore, (size_t)envelopeBytes, verified_root_key, 1,
-	        &vr_xnu_crypto, &fView);
+	opened = vr_open_header((const uint8_t *)fStore, (size_t)manifestBytes, verified_root_key, 1,
+	    &vr_xnu_crypto, &fView);
 	if (opened != VR_OK) {
 		kebab_early_mark(297, "vroot: open failed");
 		kebab_early_hex((unsigned long long)(unsigned)opened);
@@ -512,9 +512,44 @@ KebabBlockStorageDevice::configureVerification(void)
 			return false;
 		}
 	}
-	fHeaderOnly = headerOnly;
+	fHeaderOnly = headerOnly || fTablePending;
 	fEnvelopeBytes = envelopeBytes;
 	fVerified = true;
+	return true;
+}
+
+/*
+ * Load and authenticate the full envelope (header + hash table) on the first
+ * block read. Until this succeeds the window stays header-verified only, which
+ * still authorises it to the owner mount but refuses unverified data.
+ */
+bool
+KebabBlockStorageDevice::loadTable(void)
+{
+	if (!fTablePending) {
+		return !fHeaderOnly;
+	}
+	if (kebab_ufs_object_read(fSystemOs ? 1 : 0, (void *)(fStore + VR_HEADER_BYTES + VR_SIGNATURE_BYTES),
+	    0, (size_t)fTableBytes) != 0) {
+		kebab_early_mark(297, "vroot: table read failed");
+		return false;
+	}
+	(void)vm_map_protect(kernel_map, fStore, fStore + fStoreBytes, VM_PROT_READ, TRUE);
+	if (vr_open((const uint8_t *)fStore, (size_t)fEnvelopeBytes, verified_root_key, 1,
+	    &vr_xnu_crypto, &fView) != VR_OK) {
+		kebab_early_mark(297, "vroot: table open failed");
+		return false;
+	}
+	if (fSnapshot == nullptr) {
+		fSnapshot = (uint8_t *)IOMalloc(KEBAB_BLOCK_CHUNK);
+		if (fSnapshot == nullptr) {
+			return false;
+		}
+	}
+	fTablePending = false;
+	fHeaderOnly = false;
+	kebab_early_mark(297, "vroot: table verified");
+	kebab_early_hex(fView.block_count);
 	return true;
 }
 
@@ -800,7 +835,7 @@ native_verified_block_volume_device(const char *uuid, dev_t *device, char *path,
 	 * BSD client assigns the device number a little later. Retry for up to a
 	 * second and report what the matching media carries.
 	 */
-	for (int attempt = 0; attempt < 50; attempt++) {
+	for (int attempt = 0; attempt < 250; attempt++) {
 		OSDictionary    *matching = IOService::serviceMatching("IOMedia");
 		OSIterator      *iterator;
 		IORegistryEntry *entry;
@@ -842,7 +877,16 @@ native_verified_block_volume_device(const char *uuid, dev_t *device, char *path,
 		iterator->release();
 		matching->release();
 		if (withUuid == 0) {
-			/* No media with this UUID yet at all. */
+			/*
+			 * The volume's IOMedia may not exist yet: APFS publishes volumes while
+			 * it adopts the container, which can take longer than the BSD client
+			 * assignment this loop was written for. Wait instead of failing the
+			 * whole offline owner mount on the first miss.
+			 */
+			if (attempt + 1 < 250) {
+				IOSleep(20);
+				continue;
+			}
 			kebab_early_mark(263, "volume lookup: uuid missing");
 			kebab_early_hex((unsigned long long)attempt);
 			return 0;
