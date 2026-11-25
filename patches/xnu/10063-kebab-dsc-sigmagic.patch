@@ -1,0 +1,26 @@
+diff --git a/bsd/kern/kebab_dyldcache.c b/bsd/kern/kebab_dyldcache.c
+index bde607e..b6440bf 100644
+--- a/bsd/kern/kebab_dyldcache.c
++++ b/bsd/kern/kebab_dyldcache.c
+@@ -1298,6 +1298,21 @@ kebab_dsc_register_file(struct kebab_dsc_plan *plan, struct kebab_dsc_file *file
+ 	if (error != 0) {
+ 		goto failed_alloc;
+ 	}
++	{
++		static unsigned sig_marks;
++		if (sig_marks < 3) {
++			uint32_t magic = 0;
++			const uint8_t *b = (const uint8_t *)address;
++			sig_marks++;
++			for (unsigned i = 0; i < 4; i++) {
++				magic = (magic << 8) | b[i];
++			}
++			KEBAB_DSC_MARK(325, "dsc: signature magic");
++			KEBAB_DSC_HEX((unsigned long long)magic);
++			KEBAB_DSC_HEX(signature_offset);
++			KEBAB_DSC_HEX(signature_size);
++		}
++	}
+ 	error = ubc_cs_blob_add(vp, 2 /* iOS */, CPU_TYPE_ANY, CPU_SUBTYPE_ANY, 0,
+ 	    &address, allocated, NULL, 0, &blob);
+ 	if (error != 0) {

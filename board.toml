@@ -73,6 +73,9 @@ tool = "kits/XnuPrelink/emit_prelink.py"
 kernel = "build/xnu/ios-obj/DEVELOPMENT_ARM64_BCM2837/mach.development.bcm2837.unstripped.noctf"
 kernelcache_sha256 = "f18b4df865405f2a287b84977d7aca745e056d656d9fc9df1662970ce2969de7"
 slide = "-0x1000000"
+# The built-in kebab AMFI provider replaces the Apple kext, so it is no longer
+# force-loaded at early boot (and removed from the roots below). The profile still
+# supplies the initializer, so override it explicitly with an empty value.
 early_security_init = "com.apple.driver.AppleMobileFileIntegrity=0xfffffff005ab4ae0"
 roots = [
   "com.apple.AppleFSCompression.AppleFSCompressionTypeZlib",
@@ -187,8 +190,11 @@ kernel_args = [
   "kebab_verify_root=1",
   # Split dyld shared cache: parse and log the mapping plan (dry run).
   "kebab_dsc=1",
-  # Map the split shared cache into the shared region at pid 1 exec.
-  "kebab_dsc_map=1",
+  # AMFI launch-constraint relaxation (zzyc-owner-skip-launch-constraints).
+  "no-lc=1",
+  # kebab code-signing policy: unsigned Mach-O ok, trust-cache classification,
+  # entitlements answered, unsealed-root shared cache accepted (0x1|0x2|0x4|0x8).
+  "kebab_cs=15",
   # Bring-up instrument: panic before exec with the cache-path probe result, so
   # the numbers are visible on the panic screen (marks are painted over).
 ]

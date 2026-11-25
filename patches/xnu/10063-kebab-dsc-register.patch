@@ -1,0 +1,102 @@
+diff --git a/bsd/kern/kebab_dyldcache.c b/bsd/kern/kebab_dyldcache.c
+index 4d4c4ee..bde607e 100644
+--- a/bsd/kern/kebab_dyldcache.c
++++ b/bsd/kern/kebab_dyldcache.c
+@@ -1253,6 +1253,89 @@ fail:
+ 
+ #pragma mark - entry points
+ 
++
++/* Register one cache file's code signature so dyld finds a blob instead of
++ * asking the kernel to validate a signature it cannot read. */
++static int
++kebab_dsc_register_file(struct kebab_dsc_plan *plan, struct kebab_dsc_file *file,
++    uint32_t *registered, uint32_t *failed)
++{
++	char            path[KEBAB_DSC_PATH_MAX];
++	uint8_t         header[KEBAB_DSC_HEADER_SIZE];
++	vm_address_t    address = 0;
++	vm_size_t       allocated = 0;
++	struct cs_blob *blob = NULL;
++	vnode_t         vp = NULLVP;
++	uint64_t        signature_offset = 0;
++	uint64_t        signature_size = 0;
++	int             error;
++
++	snprintf(path, sizeof(path), "%s/%s", plan->dir, file->name);
++	error = vnode_lookup(path, 0, &vp, vfs_context_current());
++	if (error != 0) {
++		goto failed;
++	}
++	error = kebab_dsc_read_at(vp, header, sizeof(header), 0);
++	if (error != 0) {
++		goto failed_vp;
++	}
++	for (int i = 7; i >= 0; i--) {
++		signature_offset = (signature_offset << 8) | header[40 + i];
++		signature_size = (signature_size << 8) | header[48 + i];
++	}
++	if (signature_offset == 0 || signature_size == 0 ||
++	    signature_size > (64ULL << 20)) {
++		error = EINVAL;
++		goto failed_vp;
++	}
++	allocated = (vm_size_t)signature_size;
++	if (ubc_cs_blob_allocate(&address, &allocated) != KERN_SUCCESS) {
++		error = ENOMEM;
++		goto failed_vp;
++	}
++	error = kebab_dsc_read_at(vp, (void *)address, (size_t)signature_size,
++	    (off_t)signature_offset);
++	if (error != 0) {
++		goto failed_alloc;
++	}
++	error = ubc_cs_blob_add(vp, 2 /* iOS */, CPU_TYPE_ANY, CPU_SUBTYPE_ANY, 0,
++	    &address, allocated, NULL, 0, &blob);
++	if (error != 0) {
++		goto failed_alloc;
++	}
++	(*registered)++;
++	ubc_cs_blob_deallocate(address, allocated);
++	vnode_put(vp);
++	return 0;
++
++failed_alloc:
++	if (address != 0) {
++		ubc_cs_blob_deallocate(address, allocated);
++	}
++failed_vp:
++	vnode_put(vp);
++failed:
++	(*failed)++;
++	KEBAB_DSC_MARK(323, "dsc: signature failed");
++	KEBAB_DSC_HEX((unsigned long long)(unsigned)error);
++	KEBAB_DSC_HEX((unsigned long long)(unsigned char)file->name[0]);
++	return error;
++}
++
++static void
++kebab_dsc_register_signatures(struct kebab_dsc_plan *plan)
++{
++	uint32_t registered = 0;
++	uint32_t failed = 0;
++
++	for (uint32_t i = 0; i < plan->file_count; i++) {
++		(void)kebab_dsc_register_file(plan, &plan->files[i], &registered, &failed);
++	}
++	KEBAB_DSC_MARK(324, "dsc: signatures registered");
++	KEBAB_DSC_HEX(registered);
++	KEBAB_DSC_HEX(failed);
++}
++
+ void
+ kebab_dsc_boot(void)
+ {
+@@ -1318,6 +1401,7 @@ kebab_dsc_boot(void)
+ 	KEBAB_DSC_HEX(kebab_dsc_plan->subcache_count);
+ 	KEBAB_DSC_HEX(kebab_dsc_plan->total_mappings);
+ 	KEBAB_DSC_HEX(kebab_dsc_plan->total_mapped);
++	kebab_dsc_register_signatures(kebab_dsc_plan);
+ 	kebab_dsc_log_plan(kebab_dsc_plan);
+ 
+ 	if (!kebab_dsc_map_enabled) {

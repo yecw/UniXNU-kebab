@@ -1,0 +1,27 @@
+diff --git a/bsd/kern/kebab_codesign.c b/bsd/kern/kebab_codesign.c
+index 4704b52..cda0c8a 100644
+--- a/bsd/kern/kebab_codesign.c
++++ b/bsd/kern/kebab_codesign.c
+@@ -44,6 +44,7 @@
+ #include <sys/mount.h>
+ #include <sys/ubc.h>
+ #include <sys/ubc_internal.h>
++#include <sys/trust_caches.h>
+ #include <sys/uio.h>
+ #include <sys/kauth.h>
+ #include <sys/codesign.h>
+@@ -414,6 +415,14 @@ fail:
+ static boolean_t
+ kebab_tc_lookup(const uint8_t cdhash[KEBAB_TC_CDHASH_SIZE])
+ {
++	/*
++	 * The kernel already loaded the static trust cache from the payload, so
++	 * query it directly instead of reading a copy from the root volume (this
++	 * root has no /System/Library/Caches/com.apple.kernelcaches).
++	 */
++	if (query_trust_cache(kTCQueryTypeStatic, cdhash, NULL) == KERN_SUCCESS) {
++		return TRUE;
++	}
+ 	uint32_t lo, hi;
+ 
+ 	if (kebab_tc_data == NULL || kebab_tc_entries == 0) {

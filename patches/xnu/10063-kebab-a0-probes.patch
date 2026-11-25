@@ -1,0 +1,83 @@
+diff --git a/bsd/vm/vm_unix.c b/bsd/vm/vm_unix.c
+index 8e54fdc..3efe3d6 100644
+--- a/bsd/vm/vm_unix.c
++++ b/bsd/vm/vm_unix.c
+@@ -2317,6 +2317,20 @@ shared_region_map_and_slide_setup(
+ 	uint32_t                        i;
+ 	struct vm_shared_region         *shared_region = NULL;
+ 	boolean_t                       is_driverkit = task_is_driver(current_task());
++#if defined(KEBAB)
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		static unsigned setup_marks;
++		if (setup_marks < 4) {
++			setup_marks++;
++			kebab_early_mark(320, "shared region: map requested");
++			kebab_early_hex((unsigned long long)proc_getpid(p));
++			kebab_early_hex((unsigned long long)files_count);
++			kebab_early_hex((unsigned long long)mappings_count);
++		}
++	}
++#endif
+ 
+ 	SHARED_REGION_TRACE_DEBUG(
+ 		("shared_region: %p [%d(%s)] -> map\n",
+@@ -2372,6 +2386,20 @@ shared_region_map_and_slide_setup(
+ 	 */
+ 	struct vnode *sr_vnode = vm_shared_region_root_dir(shared_region);
+ 	if (sr_vnode != NULL ?  rdir_vp != sr_vnode : rdir_vp != rootvnode) {
++#if defined(KEBAB)
++		{
++			extern void kebab_early_mark(unsigned, const char *);
++			extern void kebab_early_hex(unsigned long long);
++			static unsigned root_marks;
++			if (root_marks < 4) {
++				root_marks++;
++				kebab_early_mark(321, "shared region: root mismatch");
++				kebab_early_hex((unsigned long long)(sr_vnode != NULL));
++				kebab_early_hex((unsigned long long)(uintptr_t)rdir_vp);
++				kebab_early_hex((unsigned long long)(uintptr_t)rootvnode);
++			}
++		}
++#endif
+ 		SHARED_REGION_TRACE_ERROR(
+ 			("shared_region: map(%p) root_dir mismatch\n",
+ 			(void *)VM_KERNEL_ADDRPERM(current_thread())));
+@@ -2867,6 +2895,19 @@ _shared_region_map_and_slide(
+ 
+ 	/* map the file(s) into that shared region's submap */
+ 	kr = vm_shared_region_map_file(shared_region, files_count, sr_file_mappings);
++#if defined(KEBAB)
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		static unsigned map_marks;
++		if (map_marks < 4) {
++			map_marks++;
++			kebab_early_mark(322, "shared region: map_file result");
++			kebab_early_hex((unsigned long long)kr);
++			kebab_early_hex((unsigned long long)files_count);
++		}
++	}
++#endif
+ 	if (kr != KERN_SUCCESS) {
+ 		SHARED_REGION_TRACE_ERROR(("shared_region: %p [%d(%s)] map(): "
+ 		    "vm_shared_region_map_file() failed kr=0x%x\n",
+diff --git a/osfmk/arm64/kebab_early.c b/osfmk/arm64/kebab_early.c
+index 43b0208..3e49c4a 100644
+--- a/osfmk/arm64/kebab_early.c
++++ b/osfmk/arm64/kebab_early.c
+@@ -169,6 +169,12 @@ kebab_mark_kept(unsigned int stage)
+ 	case 317:   /* dsc: open too small */
+ 	case 318:   /* dsc: map start */
+ 	case 319:   /* dsc: map result */
++	case 320:   /* shared region map attempted */
++	case 321:   /* shared region root mismatch */
++	case 322:   /* shared region map_file result */
++	case 323:   /* dsc: signature failed */
++	case 324:   /* dsc: signatures registered */
++	case 325:   /* dsc: signature magic */
+ 	case 289:   /* addsigs signature offset fallback */
+ 	case 290:   /* blob add stage failure */
+ 	case 291:   /* blob add entry */
