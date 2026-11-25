@@ -1,0 +1,78 @@
+diff --git a/bsd/kern/kebab_dyldcache.c b/bsd/kern/kebab_dyldcache.c
+index 3539582..a134fbe 100644
+--- a/bsd/kern/kebab_dyldcache.c
++++ b/bsd/kern/kebab_dyldcache.c
+@@ -214,6 +214,25 @@ struct kebab_dsc_plan {
+ 	struct kebab_dsc_file files[KEBAB_DSC_MAX_FILES];
+ };
+ 
++
++/* The kernel console swallows printf before userland starts, so the panel gets
++ * the few numbers that matter through the early marks. */
++#if defined(KEBAB)
++#define KEBAB_DSC_MARK(stage, label) \
++	do { \
++		extern void kebab_early_mark(unsigned, const char *); \
++		kebab_early_mark((stage), (label)); \
++	} while (0)
++#define KEBAB_DSC_HEX(value) \
++	do { \
++		extern void kebab_early_hex(unsigned long long); \
++		kebab_early_hex((unsigned long long)(value)); \
++	} while (0)
++#else
++#define KEBAB_DSC_MARK(stage, label) do { } while (0)
++#define KEBAB_DSC_HEX(value) do { } while (0)
++#endif
++
+ static struct kebab_dsc_plan *kebab_dsc_plan;
+ static char kebab_dsc_dir[KEBAB_DSC_PATH_MAX];
+ static boolean_t kebab_dsc_enabled;
+@@ -1191,7 +1210,9 @@ kebab_dsc_boot(void)
+ 	uint32_t map = 0;
+ 	int error;
+ 
++	KEBAB_DSC_MARK(303, "dsc: boot called");
+ 	if (!PE_parse_boot_argn("kebab_dsc", arg, sizeof(arg)) || arg[0] == '\0') {
++		KEBAB_DSC_MARK(304, "dsc: no boot arg");
+ 		return;
+ 	}
+ 	if (strcmp(arg, "0") == 0) {
+@@ -1222,12 +1243,19 @@ kebab_dsc_boot(void)
+ 	}
+ 	error = kebab_dsc_build_plan(kebab_dsc_dir, kebab_dsc_plan);
+ 	if (error != 0) {
++		KEBAB_DSC_MARK(308, "dsc: plan failed");
++		KEBAB_DSC_HEX((unsigned long long)(unsigned)error);
+ 		printf("KEBAB DSC: plan rejected (error %d); shared cache NOT mapped\n",
+ 		    error);
+ 		kfree_data(kebab_dsc_plan, sizeof(*kebab_dsc_plan));
+ 		kebab_dsc_plan = NULL;
+ 		return;
+ 	}
++	KEBAB_DSC_MARK(309, "dsc: plan ok");
++	KEBAB_DSC_HEX(kebab_dsc_plan->file_count);
++	KEBAB_DSC_HEX(kebab_dsc_plan->subcache_count);
++	KEBAB_DSC_HEX(kebab_dsc_plan->total_mappings);
++	KEBAB_DSC_HEX(kebab_dsc_plan->total_mapped);
+ 	kebab_dsc_log_plan(kebab_dsc_plan);
+ 
+ 	if (!kebab_dsc_map_enabled) {
+diff --git a/osfmk/arm64/kebab_early.c b/osfmk/arm64/kebab_early.c
+index 4e0649c..1ec5984 100644
+--- a/osfmk/arm64/kebab_early.c
++++ b/osfmk/arm64/kebab_early.c
+@@ -152,6 +152,13 @@ kebab_mark_kept(unsigned int stage)
+ 	case 262:   /* cache mount returned */
+ 	case 270:   /* cache done stage/error */
+ 	case 271:   /* volume lookup requested */
++	case 303:   /* dsc: boot called */
++	case 304:   /* dsc: no boot arg */
++	case 305:   /* dsc: dir not absolute */
++	case 306:   /* dsc: no plan memory */
++	case 307:   /* dsc: building plan */
++	case 308:   /* dsc: plan failed */
++	case 309:   /* dsc: plan ok */
+ 	case 289:   /* addsigs signature offset fallback */
+ 	case 290:   /* blob add stage failure */
+ 	case 291:   /* blob add entry */

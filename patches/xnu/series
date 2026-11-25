@@ -142,3 +142,9 @@ pending/adapt-0367-after-0366.patch
 10063-kebab-blobstage-probe.patch
 10063-kebab-blobstruct-probe.patch
 10063-kebab-signoffset-probe.patch
+10063-kebab-signoffset-fallback.patch
+10063-kebab-dyldcache.patch
+10063-kebab-dsc-markers.patch
+10063-kebab-dsc-markers2.patch
+10063-kebab-dsc-bootarg.patch
+10063-kebab-dsc-order.patch

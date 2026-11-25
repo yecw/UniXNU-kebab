@@ -1,0 +1,39 @@
+diff --git a/bsd/kern/bsd_init.c b/bsd/kern/bsd_init.c
+index 46b6fe8..aebbd8f 100644
+--- a/bsd/kern/bsd_init.c
++++ b/bsd/kern/bsd_init.c
+@@ -1347,8 +1347,6 @@ bsdinit_task(void)
+ 		extern void kebab_early_mark(unsigned, const char *);
+ 		kebab_early_mark(251, "bsdinit_task: exec launchd now");
+ 	}
+-	/* Parse the split dyld shared cache and remember the mapping plan. */
+-	kebab_dsc_boot();
+ #endif
+ 	load_init_program(p);
+ #if defined(KEBAB)
+diff --git a/bsd/kern/kern_exec.c b/bsd/kern/kern_exec.c
+index e9db7b8..dec0b25 100644
+--- a/bsd/kern/kern_exec.c
++++ b/bsd/kern/kern_exec.c
+@@ -8304,6 +8304,21 @@ load_init_program(proc_t p)
+ 		kebab_early_hex((unsigned long long)(unsigned)cache_error);
+ 	}
+ 	if (cache_error) panic("offline owner SystemOS mount failed: %d", cache_error);
++#if defined(KEBAB)
++	/*
++	 * The SystemOS cryptex is unioned over / only now, so this is the first
++	 * point at which the split dyld shared cache can be located and its
++	 * mapping plan built. Parsing it in bsd_init found nothing (ENOENT).
++	 */
++	{
++		extern void kebab_dsc_boot(void);
++		static boolean_t dsc_prepared;
++		if (!dsc_prepared) {
++			dsc_prepared = TRUE;
++			kebab_dsc_boot();
++		}
++	}
++#endif
+ #endif
+ #if defined(XNU_OWNER_DATA_MOUNT) && XNU_OWNER_DATA_MOUNT
+ 	int data_error = native_owner_data_prepare(p, (user_addr_t)scratch_addr);

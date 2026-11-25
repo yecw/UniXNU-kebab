@@ -1,0 +1,27 @@
+diff --git a/bsd/kern/kebab_dyldcache.c b/bsd/kern/kebab_dyldcache.c
+index 36b2285..7ef83de 100644
+--- a/bsd/kern/kebab_dyldcache.c
++++ b/bsd/kern/kebab_dyldcache.c
+@@ -1224,6 +1224,8 @@ kebab_dsc_boot(void)
+ 		strlcpy(kebab_dsc_dir, arg, sizeof(kebab_dsc_dir));
+ 	}
+ 	if (kebab_dsc_dir[0] != '/') {
++		KEBAB_DSC_MARK(305, "dsc: dir not absolute");
++		KEBAB_DSC_HEX((unsigned long long)(unsigned char)kebab_dsc_dir[0]);
+ 		printf("KEBAB DSC: kebab_dsc=%s is not an absolute directory; ignored\n",
+ 		    kebab_dsc_dir);
+ 		return;
+@@ -1238,9 +1240,13 @@ kebab_dsc_boot(void)
+ 
+ 	kebab_dsc_plan = kalloc_data(sizeof(*kebab_dsc_plan), Z_WAITOK | Z_ZERO);
+ 	if (kebab_dsc_plan == NULL) {
++		KEBAB_DSC_MARK(306, "dsc: no plan memory");
+ 		printf("KEBAB DSC: cannot allocate plan; shared cache NOT mapped\n");
+ 		return;
+ 	}
++	KEBAB_DSC_MARK(307, "dsc: building plan");
++	KEBAB_DSC_HEX((unsigned long long)(unsigned char)kebab_dsc_dir[0]);
++	KEBAB_DSC_HEX((unsigned long long)strlen(kebab_dsc_dir));
+ 	error = kebab_dsc_build_plan(kebab_dsc_dir, kebab_dsc_plan);
+ 	if (error != 0) {
+ 		KEBAB_DSC_MARK(308, "dsc: plan failed");

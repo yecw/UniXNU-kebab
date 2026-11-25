@@ -1,0 +1,75 @@
+diff --git a/bsd/kern/kern_descrip.c b/bsd/kern/kern_descrip.c
+index 1af87a9..25ee066 100644
+--- a/bsd/kern/kern_descrip.c
++++ b/bsd/kern/kern_descrip.c
+@@ -4031,6 +4031,58 @@ sys_fcntl_nocancel(proc_t p, struct fcntl_nocancel_args *uap, int32_t *retval)
+ 				}
+ 			}
+ 
++#if defined(KEBAB)
++			/*
++			 * dyld asks the kernel for the shared cache's signature at an
++			 * offset that does not match the cache header it just parsed
++			 * (0x7400 instead of 0x74000 on 21H461), so the read returns
++			 * zeros and the blob fails structural validation with EBADEXEC.
++			 * When the blob looks empty and the file is a dyld cache,
++			 * re-read it at the header's own code_signature_offset.
++			 */
++			if (error == 0 && kernel_blob_size >= 0x40 &&
++			    *(const uint32_t *)(uintptr_t)kernel_blob_addr == 0) {
++				vm_address_t header_addr = 0;
++				vm_size_t    header_size = 0x1000;
++				int          header_resid = 0;
++
++				if (ubc_cs_blob_allocate(&header_addr, &header_size) == KERN_SUCCESS &&
++				    header_resid == 0 &&
++				    vn_rdwr(UIO_READ, vp, (caddr_t)header_addr, 0x40, 0, UIO_SYSSPACE,
++				    0, kauth_cred_get(), &header_resid, p) == 0 &&
++				    header_resid == 0 &&
++				    memcmp((const void *)header_addr, "dyld_v1", 8) == 0) {
++					const uint8_t *h = (const uint8_t *)header_addr;
++					uint64_t sig_off = 0;
++					uint64_t sig_size = 0;
++					for (int i = 7; i >= 0; i--) {
++						sig_off = (sig_off << 8) | h[40 + i];
++						sig_size = (sig_size << 8) | h[48 + i];
++					}
++					if (sig_off != 0 && sig_size >= kernel_blob_size) {
++						int sig_resid = 0;
++						if (vn_rdwr(UIO_READ, vp, (caddr_t)kernel_blob_addr,
++						    (int)kernel_blob_size, (off_t)sig_off, UIO_SYSSPACE, 0,
++						    kauth_cred_get(), &sig_resid, p) == 0 && sig_resid == 0) {
++							extern void kebab_early_mark(unsigned, const char *);
++							extern void kebab_early_hex(unsigned long long);
++							static unsigned fixed_marks;
++							if (fixed_marks < 2) {
++								fixed_marks++;
++								kebab_early_mark(289,
++								    "addsigs: signature offset fixed");
++								kebab_early_hex(sig_off);
++								kebab_early_hex(sig_size);
++							}
++						}
++					}
++				}
++				if (header_addr != 0) {
++					ubc_cs_blob_deallocate(header_addr, header_size);
++				}
++			}
++#endif
++
+ 			if (error) {
+ 				ubc_cs_blob_deallocate(kernel_blob_addr,
+ 				    kernel_blob_size);
+diff --git a/osfmk/arm64/kebab_early.c b/osfmk/arm64/kebab_early.c
+index 84d3211..4e0649c 100644
+--- a/osfmk/arm64/kebab_early.c
++++ b/osfmk/arm64/kebab_early.c
+@@ -152,6 +152,7 @@ kebab_mark_kept(unsigned int stage)
+ 	case 262:   /* cache mount returned */
+ 	case 270:   /* cache done stage/error */
+ 	case 271:   /* volume lookup requested */
++	case 289:   /* addsigs signature offset fallback */
+ 	case 290:   /* blob add stage failure */
+ 	case 291:   /* blob add entry */
+ 	case 293:   /* blob add result at the fcntl */

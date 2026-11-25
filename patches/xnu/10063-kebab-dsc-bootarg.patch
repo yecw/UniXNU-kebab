@@ -1,0 +1,19 @@
+diff --git a/bsd/kern/kebab_dyldcache.c b/bsd/kern/kebab_dyldcache.c
+index 7173542..2faf170 100644
+--- a/bsd/kern/kebab_dyldcache.c
++++ b/bsd/kern/kebab_dyldcache.c
+@@ -1211,7 +1211,13 @@ kebab_dsc_boot(void)
+ 	int error;
+ 
+ 	KEBAB_DSC_MARK(303, "dsc: boot called");
+-	if (!PE_parse_boot_argn("kebab_dsc", arg, sizeof(arg)) || arg[0] == '\0') {
++	/*
++	 * This is a string argument: PE_parse_boot_argn() classifies "kebab_dsc=1"
++	 * as a number and writes a 32-bit integer into the char buffer, so the
++	 * switch read as "\x01" and the absolute-directory check rejected it.
++	 * PE_parse_boot_arg_str() forces the string form.
++	 */
++	if (!PE_parse_boot_arg_str("kebab_dsc", arg, sizeof(arg)) || arg[0] == '\0') {
+ 		KEBAB_DSC_MARK(304, "dsc: no boot arg");
+ 		return;
+ 	}
