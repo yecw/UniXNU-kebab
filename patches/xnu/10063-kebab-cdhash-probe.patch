@@ -1,0 +1,39 @@
+diff --git a/bsd/kern/ubc_subr.c b/bsd/kern/ubc_subr.c
+index b736081..2656adb 100644
+--- a/bsd/kern/ubc_subr.c
++++ b/bsd/kern/ubc_subr.c
+@@ -4861,6 +4861,22 @@ ubc_cs_blob_add(
+ 				kebab_early_hex((unsigned long long)(unsigned)error);
+ 				kebab_early_hex((unsigned long long)size);
+ 				kebab_early_hex((unsigned long long)base_offset);
++				/* The CDHash the kernel derived for this file, so it can be
++				 * compared with the trust bundle's entries directly. */
++				{
++					uint64_t word = 0;
++					unsigned i = 0;
++					for (i = 0; i < sizeof(tmp_blob.csb_cdhash); i++) {
++						word = (word << 8) | tmp_blob.csb_cdhash[i];
++						if ((i % 8) == 7) {
++							kebab_early_hex(word);
++							word = 0;
++						}
++					}
++					if (i % 8) {
++						kebab_early_hex(word);
++					}
++				}
+ 			}
+ 		}
+ #endif
+diff --git a/osfmk/arm64/kebab_early.c b/osfmk/arm64/kebab_early.c
+index 3c7aaf0..ecb045d 100644
+--- a/osfmk/arm64/kebab_early.c
++++ b/osfmk/arm64/kebab_early.c
+@@ -152,6 +152,7 @@ kebab_mark_kept(unsigned int stage)
+ 	case 262:   /* cache mount returned */
+ 	case 270:   /* cache done stage/error */
+ 	case 271:   /* volume lookup requested */
++	case 294:   /* code signature blob rejected by MACF */
+ 	case 295:   /* fcntl addsigs enter */
+ 	case 296:   /* fcntl addsigs result */
+ 	case 297:   /* owner-verified window */

@@ -137,3 +137,7 @@ pending/adapt-0367-after-0366.patch
 10063-kebab-vroot-objects.patch
 10063-kebab-manifest-weak.patch
 10063-kebab-quiet-probes.patch
+10063-kebab-cdhash-probe.patch
+10063-kebab-blobadd-probe.patch
+10063-kebab-blobstage-probe.patch
+10063-kebab-blobstruct-probe.patch

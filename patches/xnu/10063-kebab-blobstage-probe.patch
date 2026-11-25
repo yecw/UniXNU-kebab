@@ -1,0 +1,70 @@
+diff --git a/bsd/kern/ubc_subr.c b/bsd/kern/ubc_subr.c
+index 90ec399..9e2b4f0 100644
+--- a/bsd/kern/ubc_subr.c
++++ b/bsd/kern/ubc_subr.c
+@@ -4945,25 +4945,45 @@ ubc_cs_blob_add(
+ 
+ #if CODE_SIGNING_MONITOR
+ 	error = verify_code_signature_monitor(&tmp_blob);
++	KEBAB_BLOB_STAGE(1, error);
+ 	if (error != 0) {
+ 		goto out;
+ 	}
+ #endif
+ 
++#if defined(KEBAB)
++/* Name the stage of ubc_cs_blob_add() that produced an error. */
++#define KEBAB_BLOB_STAGE(number, value) \
++	do { \
++		extern void kebab_early_mark(unsigned, const char *); \
++		extern void kebab_early_hex(unsigned long long); \
++		if ((value) != 0) { \
++			kebab_early_mark(290, "blob add stage"); \
++			kebab_early_hex(number); \
++			kebab_early_hex((unsigned long long)(unsigned)(value)); \
++		} \
++	} while (0)
++#else
++#define KEBAB_BLOB_STAGE(number, value) do { } while (0)
++#endif
++
+ 	/* Perform 2nd stage reconstitution */
+ 	error = reconstitute_code_signature_2nd_stage(&tmp_blob);
++	KEBAB_BLOB_STAGE(2, error);
+ 	if (error != 0) {
+ 		goto out;
+ 	}
+ 
+ 	/* Setup any multi-level hashing for the code signature */
+ 	error = setup_multilevel_hashing(&tmp_blob);
++	KEBAB_BLOB_STAGE(3, error);
+ 	if (error != 0) {
+ 		goto out;
+ 	}
+ 
+ 	/* Ensure security critical auxiliary blobs still exist */
+ 	error = validate_auxiliary_signed_blobs(&tmp_blob);
++	KEBAB_BLOB_STAGE(4, error);
+ 	if (error != 0) {
+ 		goto out;
+ 	}
+@@ -4977,6 +4997,7 @@ ubc_cs_blob_add(
+ 	 * signature around.
+ 	 */
+ 	error = accelerate_entitlement_queries(&tmp_blob);
++	KEBAB_BLOB_STAGE(5, error);
+ 	if (error != 0) {
+ 		goto out;
+ 	}
+diff --git a/osfmk/arm64/kebab_early.c b/osfmk/arm64/kebab_early.c
+index 8a74607..84d3211 100644
+--- a/osfmk/arm64/kebab_early.c
++++ b/osfmk/arm64/kebab_early.c
+@@ -152,6 +152,7 @@ kebab_mark_kept(unsigned int stage)
+ 	case 262:   /* cache mount returned */
+ 	case 270:   /* cache done stage/error */
+ 	case 271:   /* volume lookup requested */
++	case 290:   /* blob add stage failure */
+ 	case 291:   /* blob add entry */
+ 	case 293:   /* blob add result at the fcntl */
+ 	case 294:   /* code signature blob rejected by MACF */

@@ -1,0 +1,30 @@
+diff --git a/bsd/kern/ubc_subr.c b/bsd/kern/ubc_subr.c
+index 9e2b4f0..b08c6e1 100644
+--- a/bsd/kern/ubc_subr.c
++++ b/bsd/kern/ubc_subr.c
+@@ -4763,6 +4763,25 @@ ubc_cs_blob_add(
+ 	 */
+ 	error = cs_blob_init_validated(addr, size, &tmp_blob, &cd);
+ 	if (error != 0) {
++#if defined(KEBAB)
++		{
++			extern void kebab_early_mark(unsigned, const char *);
++			extern void kebab_early_hex(unsigned long long);
++			static unsigned structural_marks;
++			if (structural_marks < 4) {
++				uint64_t magic = 0;
++				unsigned i;
++				structural_marks++;
++				kebab_early_mark(290, "blob structural");
++				kebab_early_hex((unsigned long long)(unsigned)error);
++				kebab_early_hex((unsigned long long)size);
++				for (i = 0; i < 4 && i < (unsigned)size; i++) {
++					magic = (magic << 8) | ((const uint8_t *)(uintptr_t)addr)[i];
++				}
++				kebab_early_hex(magic);
++			}
++		}
++#endif
+ 		printf("unable to create a validated cs_blob object: %d\n", error);
+ 		return error;
+ 	}
