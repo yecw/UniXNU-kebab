@@ -1,26 +1,24 @@
 diff --git a/osfmk/arm64/kebab_early.c b/osfmk/arm64/kebab_early.c
-index 74c5f7d..c7131a9 100644
+index 74c5f7d..3c7aaf0 100644
 --- a/osfmk/arm64/kebab_early.c
 +++ b/osfmk/arm64/kebab_early.c
-@@ -127,6 +127,43 @@ kebab_early_putc(char c)
+@@ -127,6 +127,41 @@ kebab_early_putc(char c)
  	early_col++;
  }
  
-+/* Bring-up probes that have served their purpose stay quiet by default: the
-+ * panel is 60 rows and a flood of confirmed markers pushes the new evidence
-+ * off the screen. kebab_probe_verbose=1 restores everything. */
++/* Bring-up probes that have served their purpose stay quiet: the panel is 60
++ * rows and a flood of confirmed markers pushes the new evidence off the screen.
++ * Marks are emitted from the first instructions of the kernel, before the boot
++ * arguments are parsed, so this switch must not call the boot-arg parser; set
++ * KEBAB_PROBE_VERBOSE to 1 here to get every marker back. */
++#define KEBAB_PROBE_VERBOSE 0
++
 +static bool kebab_mark_suppressed;
 +
 +static bool
 +kebab_probe_verbose(void)
 +{
-+	static int verbose = -1;
-+	if (verbose < 0) {
-+		char value[8];
-+		extern boolean_t PE_parse_boot_argn(const char *, void *, int);
-+		verbose = PE_parse_boot_argn("kebab_probe_verbose", value, sizeof(value)) ? 1 : 0;
-+	}
-+	return verbose != 0;
++	return KEBAB_PROBE_VERBOSE != 0;
 +}
 +
 +static bool
@@ -46,7 +44,7 @@ index 74c5f7d..c7131a9 100644
  void
  kebab_early_mark(unsigned int stage, const char *label)
  {
-@@ -135,6 +172,11 @@ kebab_early_mark(unsigned int stage, const char *label)
+@@ -135,6 +170,11 @@ kebab_early_mark(unsigned int stage, const char *label)
  	if ((stage == 50) || (stage == 51)) {
  		return;
  	}
@@ -58,7 +56,7 @@ index 74c5f7d..c7131a9 100644
  	char number[4];
  	unsigned int n = 0;
  
-@@ -166,6 +208,9 @@ void
+@@ -166,6 +206,9 @@ void
  kebab_early_hex(uint64_t value)
  {
  	char digits[19];
