@@ -163,3 +163,5 @@ pending/adapt-0367-after-0366.patch
 10063-kebab-dsc-sigmagic.patch
 10063-kebab-codesign-port.patch
 10063-kebab-cs-tckpi.patch
+10063-kebab-cs-probes.patch
+10063-kebab-tc-selftest.patch

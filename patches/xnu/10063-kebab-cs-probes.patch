@@ -1,0 +1,42 @@
+diff --git a/bsd/kern/kebab_codesign.c b/bsd/kern/kebab_codesign.c
+index cda0c8a..dcbac1e 100644
+--- a/bsd/kern/kebab_codesign.c
++++ b/bsd/kern/kebab_codesign.c
+@@ -477,8 +477,24 @@ kebab_cs_classify_blob(struct cs_blob *blob)
+ 		return;
+ 	}
+ 	if (!kebab_tc_lookup(blob->csb_cdhash)) {
++		static unsigned miss_marks;
++		if (miss_marks < 4) {
++			extern void kebab_early_mark(unsigned, const char *);
++			extern void kebab_early_hex(unsigned long long);
++			miss_marks++;
++			kebab_early_mark(327, "cs: cdhash not in tc");
++			kebab_early_hex((unsigned long long)blob->csb_cdhash[0]);
++		}
+ 		return;
+ 	}
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		static unsigned hit_marks;
++		if (hit_marks < 4) {
++			hit_marks++;
++			kebab_early_mark(328, "cs: cdhash in tc");
++		}
++	}
+ 
+ 	/*
+ 	 * Same effect the AMFI MACF hook has for a trust-cached cdhash: the
+diff --git a/bsd/kern/ubc_subr.c b/bsd/kern/ubc_subr.c
+index 82dbc6c..cf774cc 100644
+--- a/bsd/kern/ubc_subr.c
++++ b/bsd/kern/ubc_subr.c
+@@ -4908,7 +4908,7 @@ ubc_cs_blob_add(
+ 			extern void kebab_early_mark(unsigned, const char *);
+ 			extern void kebab_early_hex(unsigned long long);
+ 			static unsigned marks;
+-			if (marks < 4) {
++			if (marks < 16) {
+ 				marks++;
+ 				kebab_early_mark(294, "cs blob: MACF rejected");
+ 				kebab_early_hex((unsigned long long)(unsigned)error);

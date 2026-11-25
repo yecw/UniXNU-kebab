@@ -68,7 +68,7 @@ diff --git a/osfmk/arm64/kebab_early.c b/osfmk/arm64/kebab_early.c
 index 43b0208..3e49c4a 100644
 --- a/osfmk/arm64/kebab_early.c
 +++ b/osfmk/arm64/kebab_early.c
-@@ -169,6 +169,12 @@ kebab_mark_kept(unsigned int stage)
+@@ -169,6 +169,15 @@ kebab_mark_kept(unsigned int stage)
  	case 317:   /* dsc: open too small */
  	case 318:   /* dsc: map start */
  	case 319:   /* dsc: map result */
@@ -78,6 +78,9 @@ index 43b0208..3e49c4a 100644
 +	case 323:   /* dsc: signature failed */
 +	case 324:   /* dsc: signatures registered */
 +	case 325:   /* dsc: signature magic */
++	case 327:   /* cs: cdhash not in tc */
++	case 328:   /* cs: cdhash in tc */
++	case 329:   /* dsc: kernel tc lookup */
  	case 289:   /* addsigs signature offset fallback */
  	case 290:   /* blob add stage failure */
  	case 291:   /* blob add entry */

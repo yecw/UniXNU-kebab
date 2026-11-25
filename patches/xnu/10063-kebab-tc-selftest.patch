@@ -1,0 +1,29 @@
+diff --git a/bsd/kern/kebab_dyldcache.c b/bsd/kern/kebab_dyldcache.c
+index b6440bf..312f95b 100644
+--- a/bsd/kern/kebab_dyldcache.c
++++ b/bsd/kern/kebab_dyldcache.c
+@@ -1349,6 +1349,24 @@ kebab_dsc_register_signatures(struct kebab_dsc_plan *plan)
+ 	KEBAB_DSC_MARK(324, "dsc: signatures registered");
+ 	KEBAB_DSC_HEX(registered);
+ 	KEBAB_DSC_HEX(failed);
++	{
++		/*
++		 * Self-test: ask the kernel's trust cache about the shared cache's
++		 * CDHash, which was verified offline to be in the merged bundle.
++		 * A hit proves the static trust cache loaded and the query path works,
++		 * independent of AMFI.
++		 */
++		static const uint8_t shared_cache_cdhash[20] = {
++			0xfc, 0xdb, 0x92, 0x68, 0xe4, 0x0d, 0xc7, 0x59, 0x9a, 0xe3,
++			0xf2, 0x6c, 0x41, 0x16, 0xd5, 0xab, 0x03, 0x29, 0xea, 0xd2
++		};
++		extern kern_return_t query_trust_cache(TCQueryType_t, const uint8_t *,
++		    TrustCacheQueryToken_t *);
++		kern_return_t kr = query_trust_cache(kTCQueryTypeStatic,
++		    shared_cache_cdhash, NULL);
++		KEBAB_DSC_MARK(329, "dsc: kernel tc lookup");
++		KEBAB_DSC_HEX((unsigned long long)kr);
++	}
+ }
+ 
+ void
