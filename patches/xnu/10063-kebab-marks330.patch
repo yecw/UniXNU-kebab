@@ -1,0 +1,19 @@
+diff --git a/bsd/kern/kern_descrip.c b/bsd/kern/kern_descrip.c
+index 25ee066..2a298f5 100644
+--- a/bsd/kern/kern_descrip.c
++++ b/bsd/kern/kern_descrip.c
+@@ -4042,6 +4042,14 @@ sys_fcntl_nocancel(proc_t p, struct fcntl_nocancel_args *uap, int32_t *retval)
+ 			 */
+ 			if (error == 0 && kernel_blob_size >= 0x40 &&
+ 			    *(const uint32_t *)(uintptr_t)kernel_blob_addr == 0) {
++				extern void kebab_early_mark(unsigned, const char *);
++				extern void kebab_early_hex(unsigned long long);
++				static unsigned hit_marks;
++				if (hit_marks < 4) {
++					hit_marks++;
++					kebab_early_mark(330, "addsigs: empty blob, re-reading");
++					kebab_early_hex((unsigned long long)kernel_blob_size);
++				}
+ 				vm_address_t header_addr = 0;
+ 				vm_size_t    header_size = 0x1000;
+ 				int          header_resid = 0;

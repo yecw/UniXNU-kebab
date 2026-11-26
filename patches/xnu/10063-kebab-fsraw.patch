@@ -1,0 +1,31 @@
+diff --git a/bsd/kern/kern_descrip.c b/bsd/kern/kern_descrip.c
+index a6db6b6..d3aec0c 100644
+--- a/bsd/kern/kern_descrip.c
++++ b/bsd/kern/kern_descrip.c
+@@ -4231,6 +4231,26 @@ sys_fcntl_nocancel(proc_t p, struct fcntl_nocancel_args *uap, int32_t *retval)
+ 		if (error) {
+ 			goto out;
+ 		}
++#if defined(KEBAB)
++		{
++			extern void kebab_early_mark(unsigned, const char *);
++			extern void kebab_early_hex(unsigned long long);
++			static unsigned struct_marks;
++			if (struct_marks < 4) {
++				const uint64_t *raw = (const uint64_t *)(const void *)&fs;
++				struct_marks++;
++				kebab_early_mark(333, "addsigs: raw fs words");
++				kebab_early_hex((unsigned long long)sizeof(fs));
++				for (unsigned i = 0; i < 4; i++) {
++					kebab_early_hex(raw[i]);
++				}
++				kebab_early_mark(334, "addsigs: parsed fields");
++				kebab_early_hex((unsigned long long)fs.fs_file_start);
++				kebab_early_hex((unsigned long long)fs.fs_blob_start);
++				kebab_early_hex((unsigned long long)fs.fs_blob_size);
++			}
++		}
++#endif
+ 
+ 		orig_fd = fs.fs_orig_fd;
+ 		if ((error = fp_lookup(p, orig_fd, &orig_fp, 1))) {

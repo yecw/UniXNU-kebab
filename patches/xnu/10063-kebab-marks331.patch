@@ -1,0 +1,48 @@
+diff --git a/bsd/kern/kern_descrip.c b/bsd/kern/kern_descrip.c
+index 25ee066..5b00897 100644
+--- a/bsd/kern/kern_descrip.c
++++ b/bsd/kern/kern_descrip.c
+@@ -4059,20 +4059,36 @@ sys_fcntl_nocancel(proc_t p, struct fcntl_nocancel_args *uap, int32_t *retval)
+ 						sig_off = (sig_off << 8) | h[40 + i];
+ 						sig_size = (sig_size << 8) | h[48 + i];
+ 					}
++					{
++						extern void kebab_early_mark(unsigned, const char *);
++						extern void kebab_early_hex(unsigned long long);
++						static unsigned header_marks;
++						if (header_marks < 4) {
++							header_marks++;
++							kebab_early_mark(331, "addsigs: header signature");
++							kebab_early_hex(sig_off);
++							kebab_early_hex(sig_size);
++							kebab_early_hex(kernel_blob_size);
++						}
++					}
+ 					if (sig_off != 0 && sig_size >= kernel_blob_size) {
+ 						int sig_resid = 0;
+-						if (vn_rdwr(UIO_READ, vp, (caddr_t)kernel_blob_addr,
++						int sig_error = vn_rdwr(UIO_READ, vp,
++						    (caddr_t)kernel_blob_addr,
+ 						    (int)kernel_blob_size, (off_t)sig_off, UIO_SYSSPACE, 0,
+-						    kauth_cred_get(), &sig_resid, p) == 0 && sig_resid == 0) {
++						    kauth_cred_get(), &sig_resid, p);
++						{
+ 							extern void kebab_early_mark(unsigned, const char *);
+ 							extern void kebab_early_hex(unsigned long long);
+ 							static unsigned fixed_marks;
+-							if (fixed_marks < 2) {
++							if (fixed_marks < 4) {
+ 								fixed_marks++;
+-								kebab_early_mark(289,
+-								    "addsigs: signature offset fixed");
+-								kebab_early_hex(sig_off);
+-								kebab_early_hex(sig_size);
++								kebab_early_mark(332,
++								    "addsigs: reread result");
++								kebab_early_hex((unsigned long long)(unsigned)sig_error);
++								kebab_early_hex((unsigned long long)(unsigned)sig_resid);
++								kebab_early_hex((unsigned long long)
++								    ((const uint8_t *)(uintptr_t)kernel_blob_addr)[0]);
+ 							}
+ 						}
+ 					}

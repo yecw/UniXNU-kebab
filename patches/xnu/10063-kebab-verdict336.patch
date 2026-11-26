@@ -1,0 +1,25 @@
+diff --git a/bsd/kern/ubc_subr.c b/bsd/kern/ubc_subr.c
+index 15511c0..edd45f4 100644
+--- a/bsd/kern/ubc_subr.c
++++ b/bsd/kern/ubc_subr.c
+@@ -4927,6 +4927,20 @@ ubc_cs_blob_add(
+ 			flags,
+ 			platform);
+ 	}
++#if defined(KEBAB)
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		static unsigned verdict_marks;
++		if (verdict_marks < 8) {
++			verdict_marks++;
++			kebab_early_mark(336, "cs blob: macf verdict");
++			kebab_early_hex((unsigned long long)(unsigned)error);
++			kebab_early_hex((unsigned long long)size);
++			kebab_early_hex((unsigned long long)(unsigned)platform);
++		}
++	}
++#endif
+ 
+ 	if (error != 0) {
+ #if defined(KEBAB)

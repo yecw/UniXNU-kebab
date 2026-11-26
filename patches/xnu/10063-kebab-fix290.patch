@@ -1,0 +1,23 @@
+diff --git a/bsd/kern/ubc_subr.c b/bsd/kern/ubc_subr.c
+index cf774cc..2e6d54b 100644
+--- a/bsd/kern/ubc_subr.c
++++ b/bsd/kern/ubc_subr.c
+@@ -4779,8 +4779,16 @@ ubc_cs_blob_add(
+ 				kebab_early_mark(290, "blob structural");
+ 				kebab_early_hex((unsigned long long)(unsigned)error);
+ 				kebab_early_hex((unsigned long long)size);
+-				for (i = 0; i < 4 && i < (unsigned)size; i++) {
+-					magic = (magic << 8) | ((const uint8_t *)(uintptr_t)addr)[i];
++				/* cs_blob_init_validated takes a pointer to the buffer
++				 * address, so the blob itself starts at *addr. Printing
++				 * addr's own bytes read the page-aligned address (low
++				 * nibbles zero) and looked like an empty blob. */
++				{
++					const uint8_t *blob_bytes =
++					    (const uint8_t *)(uintptr_t)*addr;
++					for (i = 0; i < 4 && i < (unsigned)size && blob_bytes != NULL; i++) {
++						magic = (magic << 8) | blob_bytes[i];
++					}
+ 				}
+ 				kebab_early_hex(magic);
+ 			}

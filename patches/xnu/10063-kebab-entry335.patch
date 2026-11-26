@@ -1,0 +1,32 @@
+diff --git a/bsd/kern/ubc_subr.c b/bsd/kern/ubc_subr.c
+index 2e6d54b..15511c0 100644
+--- a/bsd/kern/ubc_subr.c
++++ b/bsd/kern/ubc_subr.c
+@@ -4745,6 +4745,27 @@ ubc_cs_blob_add(
+ 	boolean_t record_mtime = false;
+ 	kern_return_t kr = KERN_DENIED;
+ 	errno_t error = -1;
++#if defined(KEBAB)
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		static unsigned entry_marks;
++		if (entry_marks < 8) {
++			uint32_t word = 0;
++			const uint8_t *bytes = (const uint8_t *)(uintptr_t)(addr != NULL ? *addr : 0);
++			entry_marks++;
++			kebab_early_mark(335, "cs blob add entry");
++			kebab_early_hex((unsigned long long)size);
++			kebab_early_hex((unsigned long long)(unsigned)platform);
++			if (bytes != NULL) {
++				for (unsigned i = 0; i < 4; i++) {
++					word = (word << 8) | bytes[i];
++				}
++			}
++			kebab_early_hex((unsigned long long)word);
++		}
++	}
++#endif
+ 
+ #if HAS_APPLE_PAC
+ 	void *signed_entitlements = NULL;

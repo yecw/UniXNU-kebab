@@ -1,0 +1,20 @@
+diff --git a/bsd/kern/kebab_dyldcache.c b/bsd/kern/kebab_dyldcache.c
+index 312f95b..a796085 100644
+--- a/bsd/kern/kebab_dyldcache.c
++++ b/bsd/kern/kebab_dyldcache.c
+@@ -1313,8 +1313,13 @@ kebab_dsc_register_file(struct kebab_dsc_plan *plan, struct kebab_dsc_file *file
+ 			KEBAB_DSC_HEX(signature_size);
+ 		}
+ 	}
+-	error = ubc_cs_blob_add(vp, 2 /* iOS */, CPU_TYPE_ANY, CPU_SUBTYPE_ANY, 0,
+-	    &address, allocated, NULL, 0, &blob);
++	/*
++	 * Pass the platform of the process doing the registration (the kernel
++	 * context here) rather than a hard-coded iOS platform: AMFI compares it
++	 * with the current process and rejects a mismatch with EBADEXEC.
++	 */
++	error = ubc_cs_blob_add(vp, proc_platform(current_proc()), CPU_TYPE_ANY,
++	    CPU_SUBTYPE_ANY, 0, &address, allocated, NULL, 0, &blob);
+ 	if (error != 0) {
+ 		goto failed_alloc;
+ 	}
