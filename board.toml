@@ -15,7 +15,7 @@ kit = "kebab"        # device package/ appears as kits/kebab
 [components]
 # VerifiedRoot supplies kits/VerifiedRoot (the owner-verified-root C provider and the
 # manifest/key tooling) for the storage driver's window authentication.
-include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "DarwinBoot", "VerifiedRoot"]
+include = ["ArmDTPlatform", "ArmCpu", "XnuPrelink", "DarwinBoot", "VerifiedRoot", "SoftwareAES", "RamBlock"]
 
 # Donor IPSW: the kernel is built from Apple's XNU source and prelinked against
 # this kernelcache, so the donor only has to match the XNU version and prelink
@@ -51,6 +51,8 @@ defconfig = "kebab_defconfig"
 config_fragments = ["arch:configs/common.config", "soc:configs/sm8250.config"]
 patch_series = ["arch:patches/xnu/series", "soc:patches/xnu/series", "device:patches/xnu/series"]
 archives = [
+  "component:ArmDTPlatform",
+  "component:ArmCpu",
   "build-corecrypto-14.py",
   "build-corecrypto-14.py --namespace",
   "build-arm-driver.py ArmDTPlatform",
@@ -64,6 +66,12 @@ archives = [
   # Boot progress zone writer (boot-progress=1); the source is UniXNU-pipa's
   # BootRamoops.c with its restart/PMIC paths disabled.
   "build-boot-progress.py",
+  # Data volume (/private/var): the official RAM transport publishes a real
+  # IOMedia seeded from the payload's scratch-data.img, and SoftwareAES is the
+  # qualified crypto closure the kernel's build guard requires for it.
+  "component:SoftwareAES",
+  "build-software-aes-bindings.py",
+  "component:RamBlock",
 ]
 
 # Values below match the donor kernelcache pinned above; re-check them if the
@@ -143,7 +151,7 @@ unique_chip_id = "required"
 # optional trust cache and Data seed. The loader is part of the firmware volume.
 [payload]
 volume = "KEBABESP"
-size_mib = 64
+size_mib = 100   # the Data seed is 32 MiB next to the ~58 MB kernel
 loader = "firmware"
 title = "kebab first boot: source 4K XNU to console"
 dram_size = "0xC0000000"   # must match the hardware DTS memory node
