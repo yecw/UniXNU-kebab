@@ -1,0 +1,61 @@
+diff --git a/bsd/kern/ubc_subr.c b/bsd/kern/ubc_subr.c
+index c53a585..5944f8b 100644
+--- a/bsd/kern/ubc_subr.c
++++ b/bsd/kern/ubc_subr.c
+@@ -609,6 +609,19 @@ cs_validate_csblob(
+ 			size_t subLength = length - offset;
+ 
+ 			if ((error = cs_validate_blob(subBlob, subLength)) != 0) {
++#if defined(KEBAB)
++				{
++					extern void kebab_early_mark(unsigned, const char *);
++					extern void kebab_early_hex(unsigned long long);
++					static unsigned b_marks;
++					if (b_marks < 4) {
++						b_marks++;
++						kebab_early_mark(340, "cs validate: blob header");
++						kebab_early_hex((unsigned long long)(unsigned)error);
++						kebab_early_hex((unsigned long long)type);
++					}
++				}
++#endif
+ 				return error;
+ 			}
+ 			subLength = ntohl(subBlob->length);
+@@ -617,6 +630,19 @@ cs_validate_csblob(
+ 			if (type == CSSLOT_CODEDIRECTORY || (type >= CSSLOT_ALTERNATE_CODEDIRECTORIES && type < CSSLOT_ALTERNATE_CODEDIRECTORY_LIMIT)) {
+ 				const CS_CodeDirectory *candidate = (const CS_CodeDirectory *)subBlob;
+ 				if ((error = cs_validate_codedirectory(candidate, subLength)) != 0) {
++#if defined(KEBAB)
++					{
++						extern void kebab_early_mark(unsigned, const char *);
++						extern void kebab_early_hex(unsigned long long);
++						static unsigned c_marks;
++						if (c_marks < 4) {
++							c_marks++;
++							kebab_early_mark(341, "cs validate: codedirectory");
++							kebab_early_hex((unsigned long long)(unsigned)error);
++							kebab_early_hex((unsigned long long)subLength);
++						}
++					}
++#endif
+ 					return error;
+ 				}
+ 				unsigned int rank = hash_rank(candidate);
+@@ -742,6 +768,16 @@ cs_validate_csblob(
+ 	}
+ 
+ 	if (*rcd == NULL) {
++#if defined(KEBAB)
++		{
++			extern void kebab_early_mark(unsigned, const char *);
++			static unsigned r_marks;
++			if (r_marks < 4) {
++				r_marks++;
++				kebab_early_mark(342, "cs validate: no code directory");
++			}
++		}
++#endif
+ 		return EBADEXEC;
+ 	}
+ 

@@ -1,0 +1,43 @@
+diff --git a/bsd/kern/ubc_subr.c b/bsd/kern/ubc_subr.c
+index 5bd28ae..c53a585 100644
+--- a/bsd/kern/ubc_subr.c
++++ b/bsd/kern/ubc_subr.c
+@@ -4082,6 +4082,19 @@ cs_blob_init_validated(
+ 	length = (size_t) size;
+ 	error = cs_validate_csblob((const uint8_t *)blob->csb_mem_kaddr,
+ 	    length, &cd, &entitlements, &der_entitlements);
++#if defined(KEBAB)
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		static unsigned v_marks;
++		if (v_marks < 4) {
++			v_marks++;
++			kebab_early_mark(338, "cs blob: validator result");
++			kebab_early_hex((unsigned long long)(unsigned)error);
++			kebab_early_hex((unsigned long long)length);
++		}
++	}
++#endif
+ 	if (error) {
+ 		if (cs_debug) {
+ 			printf("CODESIGNING: csblob invalid: %d\n", error);
+@@ -4143,6 +4156,18 @@ cs_blob_init_validated(
+ 	error = 0;
+ 
+ out:
++#if defined(KEBAB)
++	{
++		extern void kebab_early_mark(unsigned, const char *);
++		extern void kebab_early_hex(unsigned long long);
++		static unsigned f_marks;
++		if (f_marks < 4) {
++			f_marks++;
++			kebab_early_mark(339, "cs blob: init final");
++			kebab_early_hex((unsigned long long)(unsigned)error);
++		}
++	}
++#endif
+ 	if (error != 0) {
+ 		cs_blob_cleanup(blob);
+ 		blob = NULL;

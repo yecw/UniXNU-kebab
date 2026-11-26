@@ -1,0 +1,38 @@
+diff --git a/bsd/kern/ubc_subr.c b/bsd/kern/ubc_subr.c
+index edd45f4..5bd28ae 100644
+--- a/bsd/kern/ubc_subr.c
++++ b/bsd/kern/ubc_subr.c
+@@ -562,6 +562,33 @@ cs_validate_csblob(
+ 		sb = (const CS_SuperBlob *)blob;
+ 		count = ntohl(sb->count);
+ 
++#if defined(KEBAB)
++		{
++			extern void kebab_early_mark(unsigned, const char *);
++			extern void kebab_early_hex(unsigned long long);
++			static unsigned sb_marks;
++			if (sb_marks < 4) {
++				uint32_t dbg_count = count;
++				sb_marks++;
++				kebab_early_mark(337, "cs validate: superblob");
++				kebab_early_hex((unsigned long long)length);
++				kebab_early_hex((unsigned long long)dbg_count);
++				for (uint32_t k = 0; k < dbg_count && k < 3; k++) {
++					uint32_t t = ntohl(sb->index[k].type);
++					uint32_t o = ntohl(sb->index[k].offset);
++					uint32_t m = 0;
++					if (o + 4 <= length) {
++						m = ntohl(*(const uint32_t *)(const void *)
++						    ((const uint8_t *)blob + o));
++					}
++					kebab_early_hex((unsigned long long)t);
++					kebab_early_hex((unsigned long long)o);
++					kebab_early_hex((unsigned long long)m);
++				}
++			}
++		}
++#endif
++
+ 		/* check that the array of BlobIndex fits in the rest of the data */
+ 		if ((length - sizeof(CS_SuperBlob)) / sizeof(CS_BlobIndex) < count) {
+ 			return EBADEXEC;

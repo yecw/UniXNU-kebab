@@ -25,3 +25,8 @@ KSTUB int  native_owner_publish_boot_manifest(int a, const char *b, int c, const
 KSTUB int  native_ram_block_volume_seed(const char *a, int *b, char *c, unsigned long d,
                                         unsigned long *e, unsigned long *f, unsigned char *g)
 { (void)a; (void)b; (void)c; (void)d; (void)e; (void)f; (void)g; return 0; }
+
+/* Referenced through __attribute__((weak_import)) by the GPU addon mount patch;
+ * a static kernel link still needs a definition when no provider is present. */
+KSTUB int  native_ram_block_gpu_addon(const unsigned char **a, unsigned long long *b)
+{ (void)a; (void)b; return 0; }
