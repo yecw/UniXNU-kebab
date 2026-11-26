@@ -1,0 +1,21 @@
+diff --git a/bsd/kern/kern_newsysctl.c b/bsd/kern/kern_newsysctl.c
+index 384f5a7..84cd2c8 100644
+--- a/bsd/kern/kern_newsysctl.c
++++ b/bsd/kern/kern_newsysctl.c
+@@ -1237,16 +1237,6 @@ sysctl_sysctl_name2oid(__unused struct sysctl_oid *oidp, __unused void *arg1,
+ #endif
+ 	error = name2oid(p, oid, &len);
+ 	lck_rw_done(&sysctl_geometry_lock);
+-#if defined(KEBAB)
+-	{
+-		extern void kebab_early_mark(unsigned, const char *);
+-		extern void kebab_early_hex(unsigned long long);
+-		kebab_early_mark(289, "name2oid: done");
+-		kebab_early_hex((unsigned long long)(unsigned)error);
+-		kebab_early_hex((unsigned long long)len);
+-		kebab_early_hex((unsigned long long)(unsigned)oid[0]);
+-	}
+-#endif
+ 
+ 	kfree_data(p, req->newlen + 1);
+ 

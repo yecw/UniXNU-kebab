@@ -99,6 +99,7 @@ roots = [
   "com.apple.kec.Libm",
   "com.apple.kec.corecrypto",
   "com.apple.security.AppleImage4",
+  "com.apple.security.sandbox",
 ]
 
 # Board device tree. dts/kebab.dts is the tree this unit runs: it keeps the
@@ -146,12 +147,15 @@ ipad_identity = false
 iphone_identity = true
 chip_id = "0x8250"
 unique_chip_id = "required"
+# The Data seed travels packed (DBRDISK1, zero pages dropped): 32 MiB -> ~1 MiB,
+# so it fits the 96 MiB boot partition beside the kernel.
+packed_data_ramdisk = true
 
 # The payload volume DarwinBoot reads: the kernel, its device tree and the
 # optional trust cache and Data seed. The loader is part of the firmware volume.
 [payload]
 volume = "KEBABESP"
-size_mib = 100   # the Data seed is 32 MiB next to the ~58 MB kernel
+size_mib = 64   # kernel + packed Data seed; the boot partition is 96 MiB
 loader = "firmware"
 title = "kebab first boot: source 4K XNU to console"
 dram_size = "0xC0000000"   # must match the hardware DTS memory node
