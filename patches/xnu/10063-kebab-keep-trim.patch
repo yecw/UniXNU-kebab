@@ -1,0 +1,72 @@
+diff --git a/osfmk/arm64/kebab_early.c b/osfmk/arm64/kebab_early.c
+index 8b214b8..0b971fa 100644
+--- a/osfmk/arm64/kebab_early.c
++++ b/osfmk/arm64/kebab_early.c
+@@ -146,61 +146,22 @@ static bool
+ kebab_mark_kept(unsigned int stage)
+ {
+ 	switch (stage) {
+-	case 243:   /* root not sealed, continuing */
+-	case 258:   /* panic text */
+-	case 260:   /* volume lookup matched */
+-	case 262:   /* cache mount returned */
+-	case 270:   /* cache done stage/error */
+-	case 271:   /* volume lookup requested */
+-	case 303:   /* dsc: boot called */
+-	case 304:   /* dsc: no boot arg */
+-	case 305:   /* dsc: dir not absolute */
+-	case 306:   /* dsc: no plan memory */
+-	case 307:   /* dsc: building plan */
+-	case 308:   /* dsc: plan failed */
++	case 243:   /* bsd_init: root not sealed, continuing */
++	case 262:   /* cache mount: mount() returned */
++	case 270:   /* cache: done stage/error */
++	case 297:   /* owner-verified window */
++	case 299:   /* root verified query */
+ 	case 309:   /* dsc: plan ok */
+ 	case 310:   /* dsc: open main */
+-	case 311:   /* dsc: header read */
+-	case 312:   /* dsc: directory scan */
+ 	case 313:   /* dsc: resolved */
+-	case 314:   /* dsc: subcache open failed */
+-	case 315:   /* dsc: subcache uuid missing */
+-	case 316:   /* dsc: open not vreg */
+-	case 317:   /* dsc: open too small */
+ 	case 318:   /* dsc: map start */
+ 	case 319:   /* dsc: map result */
+-	case 320:   /* shared region map attempted */
+-	case 321:   /* shared region root mismatch */
+-	case 322:   /* shared region map_file result */
+-	case 323:   /* dsc: signature failed */
++	case 322:   /* shared region: map_file result */
+ 	case 324:   /* dsc: signatures registered */
+-	case 325:   /* dsc: signature magic */
+-	case 327:   /* cs: cdhash not in tc */
+-	case 328:   /* cs: cdhash in tc */
+-	case 329:   /* dsc: kernel tc lookup */
+-	case 330:   /* addsigs: fallback hit */
+-	case 331:   /* addsigs: header signature */
+-	case 332:   /* addsigs: reread result */
+-	case 333:   /* addsigs: raw fs words */
+-	case 334:   /* addsigs: parsed fields */
+ 	case 335:   /* cs blob add entry */
+ 	case 336:   /* cs blob: macf verdict */
+-	case 337:   /* cs validate: superblob */
+-	case 338:   /* cs blob: validator result */
+-	case 339:   /* cs blob: init final */
+-	case 340:   /* cs validate: blob header */
+ 	case 341:   /* cs validate: codedirectory */
+-	case 342:   /* cs validate: no code directory */
+ 	case 344:   /* alloc_ptpage: avail below physBase */
+-	case 289:   /* addsigs signature offset fallback */
+-	case 290:   /* blob add stage failure */
+-	case 291:   /* blob add entry */
+-	case 293:   /* blob add result at the fcntl */
+-	case 294:   /* code signature blob rejected by MACF */
+-	case 295:   /* fcntl addsigs enter */
+-	case 296:   /* fcntl addsigs result */
+-	case 297:   /* owner-verified window */
+-	case 299:   /* root verified query */
+ 		return true;
+ 	default:
+ 		return false;

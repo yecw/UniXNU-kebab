@@ -45,7 +45,7 @@ index f231d82..a67753b 100644
 +	 * Six 2 MiB blocks: the console's text area reaches ~10.4 MB into the
 +	 * frame buffer, and one block only covers 2 MiB (2026-11-16).
 +	 */
-+	for (unsigned int block = 0; block < 6; block++) {
++	for (unsigned int block = 0; block < 12; block++) {
 +		*slot = (0x9c000000ULL + (uint64_t)block * ARM_TT_L2_SIZE) | ARM_TTE_VALID | ARM_TTE_TYPE_BLOCK |
 +		    ARM_TTE_BLOCK_SH(SH_OUTER_MEMORY) | ARM_TTE_BLOCK_ATTRINDX(CACHE_ATTRINDX_WRITECOMB) |
 +		    ARM_TTE_BLOCK_AF | ARM_TTE_BLOCK_PNX | ARM_TTE_BLOCK_NX;

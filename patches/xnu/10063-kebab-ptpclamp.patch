@@ -1,0 +1,31 @@
+diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
+index 5c74da6..4cab58d 100644
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -484,6 +484,26 @@ alloc_ptpage(boolean_t map_static)
+ 
+ 		return vaddr;
+ 	} else {
++#if defined(KEBAB)
++		/*
++		 * A page-table page must live in the physmap window. If a later stage
++		 * moved the allocation cursor below gPhysBase (the low DT banks), the
++		 * table page would be written through an unmapped physmap address and
++		 * fault; clamp the cursor back into the owned window instead.
++		 */
++		if ((uint64_t)avail_start < (uint64_t)gPhysBase) {
++			extern void kebab_early_mark(unsigned, const char *);
++			extern void kebab_early_hex(unsigned long long);
++			static unsigned clamp_marks;
++			if (clamp_marks < 4) {
++				clamp_marks++;
++				kebab_early_mark(344, "alloc_ptpage: avail below physBase");
++				kebab_early_hex((unsigned long long)avail_start);
++				kebab_early_hex((unsigned long long)gPhysBase);
++			}
++			avail_start = gPhysBase + 0x4000000ULL;
++		}
++#endif
+ 		vaddr = phystokv(avail_start);
+ 		avail_start += ARM_PGBYTES;
+ 

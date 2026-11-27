@@ -177,3 +177,7 @@ pending/adapt-0367-after-0366.patch
 10063-kebab-v340.patch
 10063-kebab-no289.patch
 10063-kebab-no287288.patch
+10063-kebab-no293print.patch
+10063-kebab-keep-trim.patch
+10063-kebab-keep-trim2.patch
+10063-kebab-watchdog-policy.patch

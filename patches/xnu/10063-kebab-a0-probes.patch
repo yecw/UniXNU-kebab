@@ -68,7 +68,7 @@ diff --git a/osfmk/arm64/kebab_early.c b/osfmk/arm64/kebab_early.c
 index 43b0208..3e49c4a 100644
 --- a/osfmk/arm64/kebab_early.c
 +++ b/osfmk/arm64/kebab_early.c
-@@ -169,6 +169,28 @@ kebab_mark_kept(unsigned int stage)
+@@ -169,6 +169,29 @@ kebab_mark_kept(unsigned int stage)
  	case 317:   /* dsc: open too small */
  	case 318:   /* dsc: map start */
  	case 319:   /* dsc: map result */
@@ -94,6 +94,7 @@ index 43b0208..3e49c4a 100644
 +	case 340:   /* cs validate: blob header */
 +	case 341:   /* cs validate: codedirectory */
 +	case 342:   /* cs validate: no code directory */
++	case 344:   /* alloc_ptpage: avail below physBase */
  	case 289:   /* addsigs signature offset fallback */
  	case 290:   /* blob add stage failure */
  	case 291:   /* blob add entry */

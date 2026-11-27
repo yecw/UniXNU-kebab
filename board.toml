@@ -204,6 +204,9 @@ kernel_args = [
   "kebab_dsc=1",
   # AMFI launch-constraint relaxation (zzyc-owner-skip-launch-constraints).
   "no-lc=1",
+  # The original watchdogd cannot check in without an Apple watchdog device;
+  # the kernel writes launchd's disabled.plist for it and nothing else.
+  "kebab-disable-watchdogd=1",
   # kebab code-signing policy: unsigned Mach-O ok, trust-cache classification,
   # entitlements answered, unsealed-root shared cache accepted (0x1|0x2|0x4|0x8).
   "kebab_cs=15",

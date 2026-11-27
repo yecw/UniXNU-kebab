@@ -1,0 +1,14 @@
+diff --git a/osfmk/arm64/kebab_early.c b/osfmk/arm64/kebab_early.c
+index aaad0d6..cdb8bb6 100644
+--- a/osfmk/arm64/kebab_early.c
++++ b/osfmk/arm64/kebab_early.c
+@@ -146,9 +146,6 @@ static bool
+ kebab_mark_kept(unsigned int stage)
+ {
+ 	switch (stage) {
+-	case 243:   /* bsd_init: root not sealed, continuing */
+-	case 262:   /* cache mount: mount() returned */
+-	case 270:   /* cache: done stage/error */
+ 	case 297:   /* owner-verified window */
+ 	case 299:   /* root verified query */
+ 	case 309:   /* dsc: plan ok */
